@@ -21,7 +21,7 @@ export function monitoringRouter(options: DashboardOptions | null) {
     }
     const period = req.query.period ?? '1h';
     if (typeof period !== 'string' || !Object.hasOwn(periods, period)) {
-      res.status(400).json({ error: 'Selecione 1h, 6h ou 24h.' });
+      res.status(400).json({ error: 'Selecione 15m, 1h, 6h ou 24h.' });
       return;
     }
     try {
@@ -62,6 +62,9 @@ interface SnapshotRow {
   memory: number | null;
   storage: number | null;
   storage_collected_at: Date | null;
+  storage_used_bytes: number | null;
+  storage_free_bytes: number | null;
+  storage_total_bytes: number | null;
 }
 
 interface SeriesRow {
@@ -74,8 +77,10 @@ interface SeriesRow {
 export async function readDashboard(
   pool: Pick<Pool, 'connect'>, nodes: NodeConfig[], period: Period, end = new Date(),
 ): Promise<DashboardData> {
-  const { minutes, interval } = periods[period];
-  const start = new Date(end.getTime() - minutes * 60_000);
+  const { minutes, bucketSeconds } = periods[period];
+  const step = bucketSeconds * 1000;
+  const lastBucket = period === '15m' ? Math.floor(end.getTime() / step) * step : end.getTime();
+  const start = new Date(lastBucket - minutes * 60_000);
   const ids = nodes.map(({ id }) => id);
   const client = await pool.connect();
   try {
@@ -84,7 +89,9 @@ export async function readDashboard(
     const { rows: snapshot } = await client.query<SnapshotRow>(`
       SELECT watched.node_id, batch.received_at, host.collected_at,
              host.cpu_percent::float8 AS cpu, host.ram_percent::float8 AS memory,
-             disk.percent::float8 AS storage, disk.collected_at AS storage_collected_at
+             disk.percent::float8 AS storage, disk.collected_at AS storage_collected_at,
+             disk.used_bytes::float8 AS storage_used_bytes, disk.free_bytes::float8 AS storage_free_bytes,
+             disk.total_bytes::float8 AS storage_total_bytes
       FROM unnest($1::text[]) AS watched(node_id)
       LEFT JOIN LATERAL (
         SELECT received_at FROM telemetry.metric_batches
@@ -92,10 +99,10 @@ export async function readDashboard(
       ) AS batch ON true
       LEFT JOIN LATERAL (
         SELECT collected_at, cpu_percent, ram_percent FROM telemetry.host_metrics
-        WHERE node_id = watched.node_id ORDER BY collected_at DESC LIMIT 1
+        WHERE node_id = watched.node_id AND collected_at <= $2 ORDER BY collected_at DESC LIMIT 1
       ) AS host ON true
       LEFT JOIN LATERAL (
-        SELECT collected_at, percent FROM telemetry.disk_metrics
+        SELECT collected_at, percent, used_bytes, free_bytes, total_bytes FROM telemetry.disk_metrics
         WHERE node_id = watched.node_id AND mountpoint = '/' AND collected_at <= $2
         ORDER BY collected_at DESC LIMIT 1
       ) AS disk ON true
@@ -106,7 +113,7 @@ export async function readDashboard(
       FROM telemetry.host_metrics
       WHERE node_id = ANY($1::text[]) AND collected_at >= $2 AND collected_at <= $3
       GROUP BY node_id, bucket ORDER BY bucket, node_id
-    `, [ids, start, end, interval + ' minutes']);
+    `, [ids, start, end, bucketSeconds + ' seconds']);
     const { rows: storage } = await client.query<{ node_id: string; bucket: Date; value: number }>(`
       SELECT node_id, date_bin($4::interval, collected_at, $2::timestamptz) AS bucket,
              avg(percent)::float8 AS value
@@ -114,11 +121,11 @@ export async function readDashboard(
       WHERE node_id = ANY($1::text[]) AND mountpoint = '/'
         AND collected_at >= $2 AND collected_at <= $3
       GROUP BY node_id, bucket ORDER BY bucket, node_id
-    `, [ids, start, end, interval + ' minutes']);
+    `, [ids, start, end, bucketSeconds + ' seconds']);
     await client.query('COMMIT');
     const byId = new Map(snapshot.map((row) => [row.node_id, row]));
     return {
-      period, start: start.toISOString(), end: end.toISOString(), bucketMinutes: interval,
+      period, start: start.toISOString(), end: end.toISOString(), bucketMinutes: bucketSeconds / 60, bucketSeconds,
       nodes: nodes.map((node) => {
         const row = byId.get(node.id);
         return {
@@ -127,6 +134,9 @@ export async function readDashboard(
           collectedAt: row?.collected_at?.toISOString() ?? null,
           cpu: row?.cpu ?? null, memory: row?.memory ?? null,
           storage: row?.storage ?? null, storageCollectedAt: row?.storage_collected_at?.toISOString() ?? null,
+          storageUsedBytes: row?.storage_used_bytes ?? null,
+          storageFreeBytes: row?.storage_free_bytes ?? null,
+          storageTotalBytes: row?.storage_total_bytes ?? null,
         };
       }),
       storagePoints: storage.map((row) => ({

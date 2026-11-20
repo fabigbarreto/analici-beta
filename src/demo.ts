@@ -8,31 +8,41 @@ const nodes = [
 
 export function demoDashboard(period: Period): DashboardData {
   const end = Date.now();
-  const { minutes, interval } = periods[period];
-  const start = end - minutes * 60_000;
+  const { minutes, bucketSeconds } = periods[period];
+  const step = bucketSeconds * 1000;
+  const slots = minutes * 60 / bucketSeconds;
+  const start = end - slots * step;
   const values = (sample: number, node: number) => ({
     cpu: 21 + 13 * node + 8 * Math.sin(sample * .39 + node) + 3 * Math.sin(sample * .89),
     memory: 37 + 14 * node + 3.5 * Math.sin(sample * .22 + node),
   });
 
   const storage = (sample: number, node: number) => 24 + 11 * node + 0.7 * Math.sin(sample * .09 + node);
-  const lastCollectedAt = (i: number) => new Date(end - (i === 2 ? 245_000 : 41_000 + 25_000 * i)).toISOString();
+  const ageSeconds = (i: number) => i === 2 ? 245 : 4 + 3 * i;
+  const lastCollectedAt = (i: number) => new Date(end - ageSeconds(i) * 1000).toISOString();
+  const availableSlots = (i: number) => slots - Math.floor(ageSeconds(i) / bucketSeconds);
 
   return {
-    period, bucketMinutes: interval, start: new Date(start).toISOString(), end: new Date(end).toISOString(),
-    nodes: nodes.map((node, i) => ({
-      ...node, status: node.status as NodeStatus,
-      collectedAt: lastCollectedAt(i), storageCollectedAt: lastCollectedAt(i),
-      storage: storage(Math.floor(minutes / interval) - 2, i),
-      ...values(Math.floor(minutes / interval) - 2, i),
-    })),
+    period, bucketMinutes: bucketSeconds / 60, bucketSeconds, start: new Date(start).toISOString(), end: new Date(end).toISOString(),
+    nodes: nodes.map((node, i) => {
+      const sample = availableSlots(i) - 1;
+      const storagePercent = storage(sample, i);
+      const total = (200 + i * 100) * 1024 ** 3;
+      const used = Math.round(total * storagePercent / 100);
+      return {
+        ...node, status: node.status as NodeStatus,
+        collectedAt: lastCollectedAt(i), storageCollectedAt: lastCollectedAt(i),
+        storage: storagePercent, storageUsedBytes: used, storageFreeBytes: total - used, storageTotalBytes: total,
+        ...values(sample, i),
+      };
+    }),
     storagePoints: nodes.flatMap((node, i) =>
-      Array.from({ length: minutes / interval - (i === 2 ? Math.ceil(4 / interval) : 0) }, (_, sample) => ({
-        nodeId: node.id, time: new Date(start + sample * interval * 60_000).toISOString(),
+      Array.from({ length: availableSlots(i) }, (_, sample) => ({
+        nodeId: node.id, time: new Date(start + sample * step).toISOString(),
         value: storage(sample, i),
       }))),
-    points: nodes.flatMap((node, i) => Array.from({ length: minutes / interval }, (_, sample) => ({
-      nodeId: node.id, time: new Date(start + sample * interval * 60_000).toISOString(), ...values(sample, i),
-    })).filter((_point, sample) => i !== 2 || sample < minutes / interval - Math.ceil(4 / interval))),
+    points: nodes.flatMap((node, i) => Array.from({ length: availableSlots(i) }, (_, sample) => ({
+      nodeId: node.id, time: new Date(start + sample * step).toISOString(), ...values(sample, i),
+    }))),
   };
 }

@@ -1,7 +1,8 @@
 export const periods = {
-  '1h': { label: '1 hora', minutes: 60, interval: 1 },
-  '6h': { label: '6 horas', minutes: 360, interval: 5 },
-  '24h': { label: '24 horas', minutes: 1440, interval: 15 },
+  '15m': { label: '15 minutos', minutes: 15, bucketSeconds: 10, refreshMs: 5_000 },
+  '1h': { label: '1 hora', minutes: 60, bucketSeconds: 60, refreshMs: 15_000 },
+  '6h': { label: '6 horas', minutes: 360, bucketSeconds: 300, refreshMs: 30_000 },
+  '24h': { label: '24 horas', minutes: 1440, bucketSeconds: 900, refreshMs: 60_000 },
 } as const;
 
 export type Period = keyof typeof periods;
@@ -21,6 +22,9 @@ export interface NodeSnapshot extends NodeConfig {
   memory: number | null;
   storage: number | null;
   storageCollectedAt: string | null;
+  storageUsedBytes: number | null;
+  storageFreeBytes: number | null;
+  storageTotalBytes: number | null;
 }
 
 export interface Sample {
@@ -41,6 +45,7 @@ export interface DashboardData {
   start: string;
   end: string;
   bucketMinutes: number;
+  bucketSeconds: number;
   nodes: NodeSnapshot[];
   points: Sample[];
   storagePoints: StorageSample[];
@@ -49,10 +54,15 @@ export interface DashboardData {
 export const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 export const percent = (value: number | null | undefined) =>
   value == null ? '—' : decimal.format(value) + '%';
+export const gibibytes = (value: number | null | undefined) =>
+  value == null ? '—' : decimal.format(value / 1024 ** 3) + ' GiB';
 export const brTime = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit',
 });
+export const brTimeWithSeconds = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
 export const brDate = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
 export const plotColors = ['#2e63f0', '#8054be', '#a15416', '#177e76', '#be4568', '#54667b'];

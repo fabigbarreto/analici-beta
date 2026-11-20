@@ -9,7 +9,7 @@ import { monitoringRouter, parseNodes, readDashboard } from '../server/monitorin
 import type { DashboardData, Period } from '../src/model.ts';
 
 const empty = (period: Period): DashboardData => ({
-  period, bucketMinutes: 1, start: '', end: '', nodes: [], points: [], storagePoints: [],
+  period, bucketMinutes: 1, bucketSeconds: 60, start: '', end: '', nodes: [], points: [], storagePoints: [],
 });
 
 test('local sessions protect telemetry, expire and can be revoked', async (t) => {
@@ -117,13 +117,13 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
     CREATE SCHEMA telemetry;
     CREATE TABLE telemetry.metric_batches (node_id varchar(32), received_at timestamptz);
     CREATE TABLE telemetry.host_metrics (node_id varchar(32), collected_at timestamptz, cpu_percent numeric, ram_percent numeric);
-    CREATE TABLE telemetry.disk_metrics (node_id varchar(32), collected_at timestamptz, mountpoint varchar(128), percent numeric);
+    CREATE TABLE telemetry.disk_metrics (node_id varchar(32), collected_at timestamptz, mountpoint varchar(128), percent numeric, used_bytes bigint, free_bytes bigint, total_bytes bigint);
     INSERT INTO telemetry.disk_metrics VALUES
-      ('node-1', '2026-11-20T13:49:10Z', '/', 25),
-      ('node-1', '2026-11-20T13:50:10Z', '/', 35),
-      ('node-1', '2026-11-20T14:00:00Z', '/var', 99),
-      ('node-2', '2026-11-20T13:55:30Z', '/', 0),
-      ('node-5', '2026-11-20T14:00:00Z', '/', 99);
+      ('node-1', '2026-11-20T13:49:10Z', '/', 25, 25, 70, 100),
+      ('node-1', '2026-11-20T13:50:10Z', '/', 35, 35, 60, 100),
+      ('node-1', '2026-11-20T14:00:00Z', '/var', 99, 99, 0, 100),
+      ('node-2', '2026-11-20T13:55:30Z', '/', 0, 0, 95, 100),
+      ('node-5', '2026-11-20T14:00:00Z', '/', 99, 99, 0, 100);
     INSERT INTO telemetry.metric_batches VALUES
       ('node-1', '2026-11-20T14:00:00Z'), ('node-2', '2026-11-20T13:55:30Z'), ('node-4', '2026-11-20T13:00:00Z');
     INSERT INTO telemetry.host_metrics VALUES
@@ -135,6 +135,7 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
   const nodes = [1, 2, 3, 4].map((n) => ({ id: 'node-' + n, label: 'VPS ' + n, description: '' }));
   const data = await readDashboard(pool, nodes, '6h', new Date('2026-11-20T14:01:00Z'));
   assert.equal(data.bucketMinutes, 5);
+  assert.equal(data.bucketSeconds, 300);
   assert.deepEqual(data.nodes.map(({ id, status, cpu }) => [id, status, cpu]), [
     ['node-1', 'online', 0], ['node-2', 'delayed', null],
     ['node-3', 'unknown', null], ['node-4', 'offline', null],
@@ -148,6 +149,17 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
   ]);
   assert.deepEqual(data.storagePoints.map(({ nodeId, value }) => [nodeId, value]), [
     ['node-1', 30], ['node-2', 0],
+  ]);
+  assert.equal(data.nodes[0].storageUsedBytes, 35);
+  assert.equal(data.nodes[0].storageFreeBytes, 60);
+  assert.equal(data.nodes[0].storageTotalBytes, 100);
+  assert.equal(data.nodes[1].storageUsedBytes, 0);
+  assert.equal(data.nodes[2].storageTotalBytes, null);
+  const recent = await readDashboard(pool, nodes, '15m', new Date('2026-11-20T14:01:07Z'));
+  assert.equal(recent.bucketSeconds, 10);
+  assert.equal(recent.start, '2026-11-20T13:46:00.000Z');
+  assert.deepEqual(recent.storagePoints.map(({ time }) => time), [
+    '2026-11-20T13:49:10.000Z', '2026-11-20T13:50:10.000Z', '2026-11-20T13:55:30.000Z',
   ]);
   assert.ok(Date.parse(data.points[1].time) - Date.parse(data.points[0].time) > data.bucketMinutes * 60_000);
 });

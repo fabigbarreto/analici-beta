@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Clock3, Cpu, HardDrive, MemoryStick, RefreshCw, Server, TriangleAlert, X } from 'lucide-react';
 import { HistoryChart } from './history-chart';
-import { brDate, brTime, percent, periods, plotColors, type DashboardData, type NodeSnapshot, type Period } from './model';
+import { brDate, brTimeWithSeconds, gibibytes, percent, periods, plotColors, type DashboardData, type NodeSnapshot, type Period } from './model';
 
 export class AccessError extends Error {}
 
@@ -29,6 +29,11 @@ function NodeCard({ node, color, selected, select, storagePage }: {
         <span className="node-metrics storage-metrics">
           <span><span className="metric-label"><HardDrive size={15} aria-hidden="true" />Disco /</span>
             <strong>{percent(node.storage)}</strong></span>
+          <span className="storage-capacity">
+            <span><span>Ocupado</span><b>{gibibytes(node.storageUsedBytes)}</b></span>
+            <span><span>Disponível</span><b>{gibibytes(node.storageFreeBytes)}</b></span>
+            <span><span>Total</span><b>{gibibytes(node.storageTotalBytes)}</b></span>
+          </span>
         </span>
       ) : (
         <span className="node-metrics">
@@ -45,16 +50,16 @@ function NodeCard({ node, color, selected, select, storagePage }: {
 }
 
 export function Dashboard({ load, demo = false, storagePage = false }: { load: Load; demo?: boolean; storagePage?: boolean }) {
-  const [period, setPeriod] = useState<Period>('1h');
+  const [period, setPeriod] = useState<Period>('15m');
   const [selected, setSelected] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const [state, setState] = useState<State>({ period: '1h', data: null, error: null, pending: true });
+  const [state, setState] = useState<State>({ period: '15m', data: null, error: null, pending: true });
 
   useEffect(() => {
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
-    async function run() {
-      setState((previous) => ({
+    async function run(background = false) {
+      if (!background) setState((previous) => ({
         period, data: previous.period === period ? previous.data : null,
         error: null, pending: true,
       }));
@@ -68,7 +73,7 @@ export function Dashboard({ load, demo = false, storagePage = false }: { load: L
           pending: false,
         }));
       } finally {
-        if (!abort.signal.aborted) timer = setTimeout(run, 60_000);
+        if (!abort.signal.aborted) timer = setTimeout(() => void run(true), periods[period].refreshMs);
       }
     }
     void run();
@@ -102,7 +107,7 @@ export function Dashboard({ load, demo = false, storagePage = false }: { load: L
           <div className="section-heading">
             <h2 id="overview-title">{storagePage ? 'Ocupação por VPS' : 'Visão geral das VPSs'}</h2>
             <p role="status" className="muted">
-              {data ? <><strong>{online} de {data.nodes.length} online</strong><span className="middot">·</span>Atualizado às {brTime.format(new Date(data.end))}</>
+              {data ? <><strong>{online} de {data.nodes.length} online</strong><span className="middot">·</span>Atualizado às {brTimeWithSeconds.format(new Date(data.end))}</>
                 : pending ? 'Consultando a telemetria…' : 'Consulta indisponível'}
             </p>
           </div>

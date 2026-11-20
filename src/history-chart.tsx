@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { brTime, percent, plotColors, type DashboardData, type Metric } from './model';
+import { brTime, brTimeWithSeconds, percent, plotColors, type DashboardData, type Metric } from './model';
 
 const height = 226;
 const frame = { left: 44, right: 11, top: 14, bottom: 25 };
@@ -12,7 +12,9 @@ export function HistoryChart({ title, metric, data, selected }: {
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
   const from = Date.parse(data.start);
-  const step = data.bucketMinutes * 60_000;
+  const { bucketSeconds } = data;
+  const step = bucketSeconds * 1000;
+  const bucketLabel = bucketSeconds < 60 ? bucketSeconds + ' s' : bucketSeconds / 60 + ' min';
   const slots = Math.max(1, Math.floor((Date.parse(data.end) - from) / step));
   const plotWidth = Math.max(1, width - frame.left - frame.right);
 
@@ -108,7 +110,7 @@ export function HistoryChart({ title, metric, data, selected }: {
   const hasValues = series.some((entry) => entry.values.size > 0);
   return (
     <figure className={metric === 'storage' ? 'chart chart-wide' : 'chart'}>
-      <figcaption><h3>{title}</h3><p>{metric === 'storage' && 'Partição / · '}Média a cada {data.bucketMinutes} min</p></figcaption>
+      <figcaption><h3>{title}</h3><p>{metric === 'storage' && 'Partição / · '}Média a cada {bucketLabel}</p></figcaption>
       <div ref={plot} className="plot" tabIndex={hasValues ? 0 : undefined} role="group"
         aria-label={title + '. Use as setas para consultar os horários.'}
         onBlur={() => setHover(null)} onPointerLeave={() => setHover(null)}
@@ -128,7 +130,7 @@ export function HistoryChart({ title, metric, data, selected }: {
         {!hasValues && <p className="plot-empty">Sem amostras neste período</p>}
       </div>
       <div className="legend" aria-live="polite">
-        {hover !== null && <strong>{brTime.format(from + hover * step)}</strong>}
+        {hover !== null && <strong>{(bucketSeconds < 60 ? brTimeWithSeconds : brTime).format(from + hover * step)}</strong>}
         {series.map((entry) => <span key={entry.id}><i aria-hidden="true" style={{ background: entry.color }} />{entry.label}
           {hover !== null && <strong>{percent(entry.values.get(hover))}</strong>}
         </span>)}
