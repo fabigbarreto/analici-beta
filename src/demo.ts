@@ -22,6 +22,11 @@ export function demoDashboard(period: Period): DashboardData {
       collectedAt: new Date(end - (i === 2 ? 245_000 : 41_000 + 25_000 * i)).toISOString(),
       ...values(Math.floor(minutes / interval) - 2, i),
     })),
+    storagePoints: nodes.flatMap((node, i) =>
+      Array.from({ length: minutes / interval - (i === 2 ? Math.ceil(4 / interval) : 0) }, (_, sample) => ({
+        nodeId: node.id, time: new Date(start + sample * interval * 60_000).toISOString(),
+        value: 24 + 11 * i + 0.7 * Math.sin(sample * .09 + i),
+      }))),
     points: nodes.flatMap((node, i) => Array.from({ length: minutes / interval }, (_, sample) => ({
       nodeId: node.id, time: new Date(start + sample * interval * 60_000).toISOString(), ...values(sample, i),
     })).filter((_point, sample) => i !== 2 || sample < minutes / interval - Math.ceil(4 / interval))),

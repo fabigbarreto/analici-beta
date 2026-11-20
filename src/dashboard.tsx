@@ -123,6 +123,7 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
           {data ? <div className="charts">
             <HistoryChart title="Uso de CPU" metric="cpu" data={data} selected={selectedNode?.id ?? null} />
             <HistoryChart title="Uso de memória" metric="memory" data={data} selected={selectedNode?.id ?? null} />
+            <HistoryChart title="Uso de armazenamento" metric="storage" data={data} selected={selectedNode?.id ?? null} />
           </div> : <p className="placeholder">{pending ? 'Carregando o histórico…' : 'O histórico aparecerá quando a consulta estiver disponível.'}</p>}
         </section>
         <footer className="footer">Horários de Brasília</footer>

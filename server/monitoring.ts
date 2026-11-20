@@ -99,6 +99,14 @@ export async function readDashboard(
       WHERE node_id = ANY($1::text[]) AND collected_at >= $2 AND collected_at <= $3
       GROUP BY node_id, bucket ORDER BY bucket, node_id
     `, [ids, start, end, interval + ' minutes']);
+    const { rows: storage } = await client.query<{ node_id: string; bucket: Date; value: number }>(`
+      SELECT node_id, date_bin($4::interval, collected_at, $2::timestamptz) AS bucket,
+             avg(percent)::float8 AS value
+      FROM telemetry.disk_metrics
+      WHERE node_id = ANY($1::text[]) AND mountpoint = '/'
+        AND collected_at >= $2 AND collected_at <= $3
+      GROUP BY node_id, bucket ORDER BY bucket, node_id
+    `, [ids, start, end, interval + ' minutes']);
     await client.query('COMMIT');
     const byId = new Map(snapshot.map((row) => [row.node_id, row]));
     return {
@@ -112,6 +120,9 @@ export async function readDashboard(
           cpu: row?.cpu ?? null, memory: row?.memory ?? null,
         };
       }),
+      storagePoints: storage.map((row) => ({
+        nodeId: row.node_id, time: row.bucket.toISOString(), value: row.value,
+      })),
       points: samples.map((row) => ({
         nodeId: row.node_id, time: row.bucket.toISOString(), cpu: row.cpu, memory: row.memory,
       })),

@@ -64,6 +64,7 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .periods button:hover, .periods button[aria-pressed="true"] { background: #eaf1ff; color: #174bab; }
 .charts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 15px; }
 .chart { min-width: 0; padding: 17px 16px 14px; }
+.chart-wide { grid-column: 1 / -1; }
 .chart h3 { font-size: 16px; font-weight: 700; }
 .chart figcaption p { margin-top: 4px; color: var(--muted); font-size: 13px; }
 .plot { margin-top: 12px; position: relative; height: 226px; }

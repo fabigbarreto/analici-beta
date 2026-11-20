@@ -6,7 +6,7 @@ export const periods = {
 
 export type Period = keyof typeof periods;
 export type NodeStatus = 'online' | 'delayed' | 'offline' | 'unknown';
-export type Metric = 'cpu' | 'memory';
+export type Metric = 'cpu' | 'memory' | 'storage';
 
 export interface NodeConfig {
   id: string;
@@ -28,6 +28,12 @@ export interface Sample {
   memory: number;
 }
 
+export interface StorageSample {
+  nodeId: string;
+  time: string;
+  value: number;
+}
+
 export interface DashboardData {
   period: Period;
   start: string;
@@ -35,6 +41,7 @@ export interface DashboardData {
   bucketMinutes: number;
   nodes: NodeSnapshot[];
   points: Sample[];
+  storagePoints: StorageSample[];
 }
 
 export const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });

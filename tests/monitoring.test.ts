@@ -9,7 +9,7 @@ import { monitoringRouter, parseNodes, readDashboard } from '../server/monitorin
 import type { DashboardData, Period } from '../src/model.ts';
 
 const empty = (period: Period): DashboardData => ({
-  period, bucketMinutes: 1, start: '', end: '', nodes: [], points: [],
+  period, bucketMinutes: 1, start: '', end: '', nodes: [], points: [], storagePoints: [],
 });
 
 test('local sessions protect telemetry, expire and can be revoked', async (t) => {
@@ -117,6 +117,13 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
     CREATE SCHEMA telemetry;
     CREATE TABLE telemetry.metric_batches (node_id varchar(32), received_at timestamptz);
     CREATE TABLE telemetry.host_metrics (node_id varchar(32), collected_at timestamptz, cpu_percent numeric, ram_percent numeric);
+    CREATE TABLE telemetry.disk_metrics (node_id varchar(32), collected_at timestamptz, mountpoint varchar(128), percent numeric);
+    INSERT INTO telemetry.disk_metrics VALUES
+      ('node-1', '2026-11-20T13:49:10Z', '/', 25),
+      ('node-1', '2026-11-20T13:50:10Z', '/', 35),
+      ('node-1', '2026-11-20T14:00:00Z', '/var', 99),
+      ('node-2', '2026-11-20T13:55:30Z', '/', 0),
+      ('node-5', '2026-11-20T14:00:00Z', '/', 99);
     INSERT INTO telemetry.metric_batches VALUES
       ('node-1', '2026-11-20T14:00:00Z'), ('node-2', '2026-11-20T13:55:30Z'), ('node-4', '2026-11-20T13:00:00Z');
     INSERT INTO telemetry.host_metrics VALUES
@@ -134,6 +141,9 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
   ]);
   assert.deepEqual(data.points.map(({ nodeId, cpu, memory }) => [nodeId, cpu, memory]), [
     ['node-1', 25, 45], ['node-1', 0, 53],
+  ]);
+  assert.deepEqual(data.storagePoints.map(({ nodeId, value }) => [nodeId, value]), [
+    ['node-1', 30], ['node-2', 0],
   ]);
   assert.ok(Date.parse(data.points[1].time) - Date.parse(data.points[0].time) > data.bucketMinutes * 60_000);
 });

@@ -1,8 +1,8 @@
 # ANALICI Beta
 
-A primeira tela do Beta acompanha a disponibilidade, a última coleta, a CPU
-e a memória das VPSs de uma instalação. Selecione um cartão para filtrar os
-gráficos. O histórico oferece períodos de 1, 6 e 24 horas e atualiza a cada
+A primeira tela do Beta acompanha a disponibilidade, a última coleta, a CPU,
+a memória e o uso do disco principal (`/`) das VPSs. Selecione um cartão
+para filtrar os gráficos. O histórico oferece períodos de 1, 6 e 24 horas e atualiza a cada
 minuto. Lacunas indicam intervalos sem amostras. Os horários usam Brasília.
 
 ## Prévia
@@ -34,8 +34,8 @@ hash em um arquivo novo, substitua o arquivo usado pelo serviço e reinicie o Be
 
 Coloque a URL PostgreSQL da credencial de leitura em um arquivo privado e aponte
 `MONITORING_DATABASE_URL_FILE` para ele. Conceda acesso ao schema `telemetry`
-e permissão de leitura nas tabelas `telemetry.metric_batches` e
-`telemetry.host_metrics`. Os identificadores em `MONITORING_NODES` devem
+e permissão de leitura nas tabelas `telemetry.metric_batches`,
+`telemetry.host_metrics` e `telemetry.disk_metrics`. Os identificadores em `MONITORING_NODES` devem
 corresponder ao campo `node_id` dos registros persistidos.
 
 ```bash

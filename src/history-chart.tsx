@@ -16,16 +16,21 @@ export function HistoryChart({ title, metric, data, selected }: {
   const slots = Math.max(1, Math.floor((Date.parse(data.end) - from) / step));
   const plotWidth = Math.max(1, width - frame.left - frame.right);
 
-  const series = useMemo(() => data.nodes.map((node, index) => ({
-    ...node, color: plotColors[index], values: new Map<number, number>(),
-  })).filter((node) => !selected || selected === node.id).map((node) => {
-    for (const point of data.points) {
-      if (point.nodeId !== node.id || !Number.isFinite(point[metric])) continue;
-      const index = Math.round((Date.parse(point.time) - from) / step);
-      if (index >= 0 && index <= slots) node.values.set(index, point[metric]);
-    }
-    return node;
-  }), [data.nodes, data.points, metric, selected, from, step, slots]);
+  const series = useMemo(() => {
+    const samples = metric === 'storage'
+      ? data.storagePoints
+      : data.points.map((point) => ({ nodeId: point.nodeId, time: point.time, value: point[metric] }));
+    return data.nodes.map((node, index) => ({
+      ...node, color: plotColors[index], values: new Map<number, number>(),
+    })).filter((node) => !selected || selected === node.id).map((node) => {
+      for (const sample of samples) {
+        if (sample.nodeId !== node.id || !Number.isFinite(sample.value)) continue;
+        const index = Math.round((Date.parse(sample.time) - from) / step);
+        if (index >= 0 && index <= slots) node.values.set(index, sample.value);
+      }
+      return node;
+    });
+  }, [data.nodes, data.points, data.storagePoints, metric, selected, from, step, slots]);
 
   useEffect(() => { setHover(null); }, [data.period, selected]);
 
@@ -102,8 +107,8 @@ export function HistoryChart({ title, metric, data, selected }: {
 
   const hasValues = series.some((entry) => entry.values.size > 0);
   return (
-    <figure className="chart">
-      <figcaption><h3>{title}</h3><p>Média a cada {data.bucketMinutes} min</p></figcaption>
+    <figure className={metric === 'storage' ? 'chart chart-wide' : 'chart'}>
+      <figcaption><h3>{title}</h3><p>{metric === 'storage' && 'Partição / · '}Média a cada {data.bucketMinutes} min</p></figcaption>
       <div ref={plot} className="plot" tabIndex={hasValues ? 0 : undefined} role="group"
         aria-label={title + '. Use as setas para consultar os horários.'}
         onBlur={() => setHover(null)} onPointerLeave={() => setHover(null)}
