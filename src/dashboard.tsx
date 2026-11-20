@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock3, Cpu, MemoryStick, RefreshCw, Server, TriangleAlert, X } from 'lucide-react';
+import { Clock3, Cpu, HardDrive, MemoryStick, RefreshCw, Server, TriangleAlert, X } from 'lucide-react';
 import { HistoryChart } from './history-chart';
 import { brDate, brTime, percent, periods, plotColors, type DashboardData, type NodeSnapshot, type Period } from './model';
 
@@ -12,9 +12,10 @@ const statuses = {
   online: 'Online', delayed: 'Coleta atrasada', offline: 'Sem comunicação', unknown: 'Sem dados',
 };
 
-function NodeCard({ node, color, selected, select }: {
-  node: NodeSnapshot; color: string; selected: boolean; select: () => void;
+function NodeCard({ node, color, selected, select, storagePage }: {
+  node: NodeSnapshot; color: string; selected: boolean; select: () => void; storagePage: boolean;
 }) {
+  const collectedAt = storagePage ? node.storageCollectedAt : node.collectedAt;
   return (
     <button type="button" className="node-card" aria-pressed={selected}
       style={{ borderTopColor: color }} onClick={select}>
@@ -24,18 +25,26 @@ function NodeCard({ node, color, selected, select }: {
       </span>
       <span className="node-name">{node.label}</span>
       {node.description && <span className="node-description">{node.description}</span>}
-      <span className="node-metrics">
-        <span><span className="metric-label"><Cpu size={15} aria-hidden="true" />CPU</span><strong>{percent(node.cpu)}</strong></span>
-        <span><span className="metric-label"><MemoryStick size={15} aria-hidden="true" />Memória</span><strong>{percent(node.memory)}</strong></span>
-      </span>
+      {storagePage ? (
+        <span className="node-metrics storage-metrics">
+          <span><span className="metric-label"><HardDrive size={15} aria-hidden="true" />Disco /</span>
+            <strong>{percent(node.storage)}</strong></span>
+        </span>
+      ) : (
+        <span className="node-metrics">
+          <span><span className="metric-label"><Cpu size={15} aria-hidden="true" />CPU</span><strong>{percent(node.cpu)}</strong></span>
+          <span><span className="metric-label"><MemoryStick size={15} aria-hidden="true" />Memória</span><strong>{percent(node.memory)}</strong></span>
+        </span>
+      )}
       <span className="last-seen"><Clock3 size={14} aria-hidden="true" />
-        Última coleta {node.collectedAt ? brDate.format(new Date(node.collectedAt)) : '—'}
+        {collectedAt ? 'Última coleta ' + brDate.format(new Date(collectedAt))
+          : storagePage ? 'Sem leitura de disco' : 'Última coleta —'}
       </span>
     </button>
   );
 }
 
-export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }) {
+export function Dashboard({ load, demo = false, storagePage = false }: { load: Load; demo?: boolean; storagePage?: boolean }) {
   const [period, setPeriod] = useState<Period>('1h');
   const [selected, setSelected] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -75,7 +84,9 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
   return (
     <>
       <header className="topbar">
-        <div><h1>Monitoramento</h1><p>Disponibilidade e utilização das VPSs</p></div>
+        <div><h1>{storagePage ? 'Armazenamento' : 'Monitoramento'}</h1>
+          <p>{storagePage ? 'Ocupação do disco principal de cada VPS' : 'Disponibilidade e utilização das VPSs'}</p>
+        </div>
         <div className="toolbar">
           {demo && <span className="badge demo">Demonstração · dados fictícios</span>}
           <button type="button" className="outline-button" disabled={pending} onClick={() => setRefresh((n) => n + 1)}>
@@ -89,7 +100,7 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
         </div>}
         <section aria-labelledby="overview-title">
           <div className="section-heading">
-            <h2 id="overview-title">Visão geral das VPSs</h2>
+            <h2 id="overview-title">{storagePage ? 'Ocupação por VPS' : 'Visão geral das VPSs'}</h2>
             <p role="status" className="muted">
               {data ? <><strong>{online} de {data.nodes.length} online</strong><span className="middot">·</span>Atualizado às {brTime.format(new Date(data.end))}</>
                 : pending ? 'Consultando a telemetria…' : 'Consulta indisponível'}
@@ -97,7 +108,7 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
           </div>
           {data && <div className="nodes">
             {data.nodes.map((node, index) => <NodeCard key={node.id} node={node} color={plotColors[index]}
-              selected={selected === node.id} select={() => setSelected((current) => current === node.id ? null : node.id)} />)}
+              storagePage={storagePage} selected={selected === node.id} select={() => setSelected((current) => current === node.id ? null : node.id)} />)}
           </div>}
           {!data && pending && <div className="nodes" aria-hidden="true">{[1, 2, 3].map((i) => <div key={i} className="skeleton" />)}</div>}
         </section>
@@ -105,7 +116,7 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
         <section aria-labelledby="history-title">
           <div className="section-heading history-heading">
             <div className="history-title">
-              <h2 id="history-title">Histórico de utilização</h2>
+              <h2 id="history-title">{storagePage ? 'Histórico do disco' : 'Histórico de utilização'}</h2>
               {selectedNode && (
                 <button type="button" className="selected-chip" onClick={() => setSelected(null)}
                   aria-label={'Remover filtro de ' + selectedNode.label}>
@@ -121,9 +132,14 @@ export function Dashboard({ load, demo = false }: { load: Load; demo?: boolean }
             </div>
           </div>
           {data ? <div className="charts">
-            <HistoryChart title="Uso de CPU" metric="cpu" data={data} selected={selectedNode?.id ?? null} />
-            <HistoryChart title="Uso de memória" metric="memory" data={data} selected={selectedNode?.id ?? null} />
-            <HistoryChart title="Uso de armazenamento" metric="storage" data={data} selected={selectedNode?.id ?? null} />
+            {storagePage ? (
+              <HistoryChart title="Uso de armazenamento" metric="storage" data={data} selected={selectedNode?.id ?? null} />
+            ) : (
+              <>
+                <HistoryChart title="Uso de CPU" metric="cpu" data={data} selected={selectedNode?.id ?? null} />
+                <HistoryChart title="Uso de memória" metric="memory" data={data} selected={selectedNode?.id ?? null} />
+              </>
+            )}
           </div> : <p className="placeholder">{pending ? 'Carregando o histórico…' : 'O histórico aparecerá quando a consulta estiver disponível.'}</p>}
         </section>
         <footer className="footer">Horários de Brasília</footer>

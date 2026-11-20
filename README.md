@@ -2,7 +2,8 @@
 
 A primeira tela do Beta acompanha a disponibilidade, a última coleta, a CPU,
 a memória e o uso do disco principal (`/`) das VPSs. Selecione um cartão
-para filtrar os gráficos. O histórico oferece períodos de 1, 6 e 24 horas e atualiza a cada
+para filtrar os gráficos. Use **Armazenamento** no menu lateral para abrir
+a página de disco em `/armazenamento`. O histórico oferece períodos de 1, 6 e 24 horas e atualiza a cada
 minuto. Lacunas indicam intervalos sem amostras. Os horários usam Brasília.
 
 ## Prévia

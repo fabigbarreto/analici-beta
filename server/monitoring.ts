@@ -60,6 +60,8 @@ interface SnapshotRow {
   collected_at: Date | null;
   cpu: number | null;
   memory: number | null;
+  storage: number | null;
+  storage_collected_at: Date | null;
 }
 
 interface SeriesRow {
@@ -81,7 +83,8 @@ export async function readDashboard(
     await client.query("SET LOCAL statement_timeout = '5s'");
     const { rows: snapshot } = await client.query<SnapshotRow>(`
       SELECT watched.node_id, batch.received_at, host.collected_at,
-             host.cpu_percent::float8 AS cpu, host.ram_percent::float8 AS memory
+             host.cpu_percent::float8 AS cpu, host.ram_percent::float8 AS memory,
+             disk.percent::float8 AS storage, disk.collected_at AS storage_collected_at
       FROM unnest($1::text[]) AS watched(node_id)
       LEFT JOIN LATERAL (
         SELECT received_at FROM telemetry.metric_batches
@@ -91,7 +94,12 @@ export async function readDashboard(
         SELECT collected_at, cpu_percent, ram_percent FROM telemetry.host_metrics
         WHERE node_id = watched.node_id ORDER BY collected_at DESC LIMIT 1
       ) AS host ON true
-    `, [ids]);
+      LEFT JOIN LATERAL (
+        SELECT collected_at, percent FROM telemetry.disk_metrics
+        WHERE node_id = watched.node_id AND mountpoint = '/' AND collected_at <= $2
+        ORDER BY collected_at DESC LIMIT 1
+      ) AS disk ON true
+    `, [ids, end]);
     const { rows: samples } = await client.query<SeriesRow>(`
       SELECT node_id, date_bin($4::interval, collected_at, $2::timestamptz) AS bucket,
              avg(cpu_percent)::float8 AS cpu, avg(ram_percent)::float8 AS memory
@@ -118,6 +126,7 @@ export async function readDashboard(
           status: status(row?.received_at ?? null, end),
           collectedAt: row?.collected_at?.toISOString() ?? null,
           cpu: row?.cpu ?? null, memory: row?.memory ?? null,
+          storage: row?.storage ?? null, storageCollectedAt: row?.storage_collected_at?.toISOString() ?? null,
         };
       }),
       storagePoints: storage.map((row) => ({

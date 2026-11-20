@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowRight, LockKeyhole, LogOut } from 'lucide-react';
+import { Activity, ArrowRight, HardDrive, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
 import type { DashboardData, Period } from './model';
 import './styles.css';
 
 const isDemo = import.meta.env.DEV && import.meta.env.MODE === 'demo';
+const storagePage = /^\/armazenamento\/?$/.test(window.location.pathname);
+if (storagePage) document.title = 'Armazenamento · ANALICI Beta';
 type Session = 'checking' | 'signed-out' | 'signed-in' | 'unavailable';
 
 function Brand() {
@@ -134,15 +136,20 @@ function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navegação principal">
-          <a href="#monitoramento" aria-current="page"><Activity size={17} aria-hidden="true" />Monitoramento</a>
+          <a href="/" aria-current={storagePage ? undefined : 'page'}>
+            <Activity size={17} aria-hidden="true" />Monitoramento
+          </a>
+          <a href="/armazenamento" aria-current={storagePage ? 'page' : undefined}>
+            <HardDrive size={17} aria-hidden="true" />Armazenamento
+          </a>
         </nav>
         {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
           <LogOut size={17} aria-hidden="true" />Sair
         </button>}
       </aside>
-      <main className="workspace" id="monitoramento">
+      <main className="workspace" id={storagePage ? "armazenamento" : "monitoramento"}>
         {authError && <p className="session-error" role="alert">{authError}</p>}
-        <Dashboard load={loadDashboard} demo={isDemo} />
+        <Dashboard load={loadDashboard} demo={isDemo} storagePage={storagePage} />
       </main>
     </div>
   );

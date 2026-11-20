@@ -142,6 +142,10 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
   assert.deepEqual(data.points.map(({ nodeId, cpu, memory }) => [nodeId, cpu, memory]), [
     ['node-1', 25, 45], ['node-1', 0, 53],
   ]);
+  assert.deepEqual(data.nodes.map(({ id, storage, storageCollectedAt }) => [id, storage, storageCollectedAt]), [
+    ['node-1', 35, '2026-11-20T13:50:10.000Z'], ['node-2', 0, '2026-11-20T13:55:30.000Z'],
+    ['node-3', null, null], ['node-4', null, null],
+  ]);
   assert.deepEqual(data.storagePoints.map(({ nodeId, value }) => [nodeId, value]), [
     ['node-1', 30], ['node-2', 0],
   ]);

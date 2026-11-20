@@ -19,6 +19,8 @@ export interface NodeSnapshot extends NodeConfig {
   collectedAt: string | null;
   cpu: number | null;
   memory: number | null;
+  storage: number | null;
+  storageCollectedAt: string | null;
 }
 
 export interface Sample {
