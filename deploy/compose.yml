@@ -1,0 +1,29 @@
+services:
+  beta:
+    image: ${BETA_IMAGE:?Defina a imagem do Beta}
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BETA_TRUST_PROXY: "1"
+      BETA_ADMIN_PASSWORD_HASH_FILE: /run/analici/admin-password
+      MONITORING_DATABASE_URL_FILE: /run/analici/database-url
+      HOST: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3107:3000"
+    volumes:
+      - ./secrets:/run/analici:ro
+    networks:
+      - default
+      - telemetry
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  telemetry:
+    external: true
+    name: ${BETA_DATABASE_NETWORK:?Defina a rede Docker do PostgreSQL}

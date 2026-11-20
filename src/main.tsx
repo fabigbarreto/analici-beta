@@ -1,20 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { Activity, ArrowRight, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
 import type { DashboardData, Period } from './model';
 import './styles.css';
 
 const isDemo = import.meta.env.DEV && import.meta.env.MODE === 'demo';
-const firebase = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-const auth = !isDemo && Object.values(firebase).every(Boolean) ? getAuth(initializeApp(firebase)) : null;
+type Session = 'checking' | 'signed-out' | 'signed-in' | 'unavailable';
 
 function Brand() {
   return <div className="brand"><span className="brand-icon"><Activity size={21} aria-hidden="true" /></span><span>ANALICI <small>Beta</small></span></div>;
@@ -27,55 +19,109 @@ async function loadSample(period: Period, signal: AbortSignal) {
 }
 
 function App() {
-  const [user, setUser] = useState<User | null | undefined>(auth ? undefined : null);
+  const [session, setSession] = useState<Session>('checking');
   const [authError, setAuthError] = useState('');
-  const [signingIn, setSigningIn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => auth ? onAuthStateChanged(auth, setUser, () => {
-    setUser(null);
-    setAuthError('Não foi possível verificar sua sessão.');
-  }) : undefined, []);
+  useEffect(() => {
+    if (isDemo) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/session', { signal: controller.signal, cache: 'no-store' });
+        if (response.status === 503) {
+          setSession('unavailable');
+          return;
+        }
+        if (!response.ok) throw new Error('Erro ao consultar a sessão.');
+        const { authenticated } = await response.json();
+        setSession(authenticated === true ? 'signed-in' : 'signed-out');
+      } catch {
+        if (controller.signal.aborted) return;
+        setSession('signed-out');
+        setAuthError('Não foi possível verificar a sessão. Tente entrar.');
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   const loadDashboard = useCallback(async (period: Period, signal: AbortSignal): Promise<DashboardData> => {
     if (isDemo) return loadSample(period, signal);
-    if (!user) throw new AccessError('Entre novamente para acessar os dados.');
-    const token = await user.getIdToken();
-    const response = await fetch('/api/monitoring/dashboard?period=' + period, {
-      signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
-    });
-    if (response.status === 401) throw new AccessError('Sua sessão expirou. Saia e entre novamente.');
-    if (response.status === 403) throw new AccessError('Seu acesso ao monitoramento ainda não foi autorizado.');
+    const response = await fetch('/api/monitoring/dashboard?period=' + period, { signal, cache: 'no-store' });
+    if (response.status === 401) {
+      const message = 'Sua sessão expirou. Entre novamente.';
+      if (!signal.aborted) {
+        setSession('signed-out');
+        setAuthError(message);
+      }
+      throw new AccessError(message);
+    }
     if (!response.ok) throw new Error('Não foi possível consultar a telemetria. Tente atualizar.');
     return response.json();
-  }, [user]);
+  }, []);
 
-  async function login() {
-    if (!auth || signingIn) return;
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    const form = event.currentTarget;
+    const fields = new FormData(form);
     setAuthError('');
-    setSigningIn(true);
+    setSubmitting(true);
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: fields.get('username'), password: fields.get('password') }),
+      });
+      if (response.status === 204) {
+        form.reset();
+        setSession('signed-in');
+      } else {
+        const { error } = await response.json();
+        setAuthError(error);
+      }
     } catch {
-      setAuthError('Não foi possível entrar com o Google. Tente novamente.');
+      setAuthError('Não foi possível entrar. Tente novamente.');
     } finally {
-      setSigningIn(false);
+      setSubmitting(false);
     }
   }
 
-  if (!isDemo && !user) {
+  async function logout() {
+    if (submitting) return;
+    setSubmitting(true);
+    setAuthError('');
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Erro ao encerrar a sessão.');
+      setSession('signed-out');
+    } catch {
+      setAuthError('Não foi possível encerrar a sessão. Tente novamente.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!isDemo && session !== 'signed-in') {
     return (
       <main className="sign-in-shell">
         <Brand />
         <section className="sign-in-panel">
           <div className="auth-icon"><LockKeyhole aria-hidden="true" size={23} /></div>
           <h1>Monitoramento</h1>
-          <p>Entre com uma conta autorizada para acompanhar a infraestrutura.</p>
-          {!auth && <p role="status" className="muted">O acesso ao painel ainda não foi configurado.</p>}
-          {auth && (
-            <button type="button" className="primary-button" disabled={user === undefined || signingIn} onClick={login}>
-              {user === undefined ? 'Verificando sessão…' : signingIn ? 'Entrando…' : 'Entrar com Google'}
-              <ArrowRight size={16} aria-hidden="true" />
-            </button>
+          {session === 'checking' && <p role="status">Verificando sessão…</p>}
+          {session === 'unavailable' && <p role="status">O acesso ao painel ainda não foi configurado.</p>}
+          {session === 'signed-out' && (
+            <form className="sign-in-form" onSubmit={login}>
+              <label htmlFor="username">Usuário</label>
+              <input id="username" name="username" autoComplete="username" autoCapitalize="none" maxLength={64} required />
+              <label htmlFor="password">Senha</label>
+              <input id="password" name="password" type="password" autoComplete="current-password" maxLength={512} required />
+              <button className="primary-button" disabled={submitting}>
+                {submitting ? 'Entrando…' : 'Entrar'}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </form>
           )}
           {authError && <p className="error-text" role="alert">{authError}</p>}
         </section>
@@ -90,13 +136,13 @@ function App() {
         <nav aria-label="Navegação principal">
           <a href="#monitoramento" aria-current="page"><Activity size={17} aria-hidden="true" />Monitoramento</a>
         </nav>
-        {auth && user && <button type="button" className="logout" onClick={() => {
-          void signOut(auth).catch(() => setAuthError('Não foi possível encerrar a sessão. Tente novamente.'));
-        }}><LogOut size={17} aria-hidden="true" />Sair</button>}
+        {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
+          <LogOut size={17} aria-hidden="true" />Sair
+        </button>}
       </aside>
       <main className="workspace" id="monitoramento">
         {authError && <p className="session-error" role="alert">{authError}</p>}
-        <Dashboard key={user?.uid ?? 'demo'} load={loadDashboard} demo={isDemo} />
+        <Dashboard load={loadDashboard} demo={isDemo} />
       </main>
     </div>
   );

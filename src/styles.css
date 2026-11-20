@@ -13,7 +13,7 @@ h1, h2, h3, p, figure { margin: 0; }
 a { color: inherit; }
 button { font: inherit; cursor: pointer; }
 button:disabled { cursor: wait; opacity: .66; }
-button:focus-visible, a:focus-visible, .plot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:focus-visible, a:focus-visible, input:focus-visible, .plot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .app { display: grid; min-height: 100dvh; grid-template-columns: 220px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; background: #0b2133; color: #e5eef6; padding: 23px 17px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 750; letter-spacing: .04em; }
@@ -82,6 +82,10 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .sign-in-panel { max-width: 410px; margin: clamp(38px, 12vh, 124px) auto 0; padding: 28px; background: #fff; border-top: 3px solid var(--accent); }
 .auth-icon { display: grid; place-items: center; width: 44px; height: 44px; color: #2455b2; background: #edf3ff; margin-bottom: 16px; }
 .sign-in-panel p { margin-top: 10px; font-size: 14px; color: var(--muted); line-height: 1.55; }
+.sign-in-form { display: grid; gap: 8px; margin-top: 24px; }
+.sign-in-form label { font-size: 14px; font-weight: 650; }
+.sign-in-form input { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid #aebed1; background: #fff; color: #11273b; font: inherit; }
+.sign-in-form input + label { margin-top: 6px; }
 .sign-in-panel .primary-button { margin-top: 20px; width: 100%; background: #2456d5; border-color: #2456d5; color: #fff; }
 .sign-in-panel .error-text { color: #90282e; }
 .spinning { animation: spin 1s linear infinite; }

@@ -1,12 +1,9 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import type { Pool } from 'pg';
 import { periods, type DashboardData, type NodeConfig, type NodeStatus, type Period } from '../src/model.ts';
 
-type Identity = { email?: string; email_verified?: boolean };
-
 export interface DashboardOptions {
-  verify: (token: string) => Promise<Identity>;
-  admins: Set<string>;
+  authenticated: (request: Request) => boolean;
   read: (period: Period) => Promise<DashboardData>;
 }
 
@@ -18,20 +15,8 @@ export function monitoringRouter(options: DashboardOptions | null) {
       res.status(503).json({ error: 'O acesso à telemetria ainda não está configurado.' });
       return;
     }
-    const token = req.get('Authorization')?.match(/^Bearer ([^\s]+)$/i)?.[1];
-    if (!token) {
+    if (!options.authenticated(req)) {
       res.status(401).json({ error: 'Entre para acessar o monitoramento.' });
-      return;
-    }
-    let identity: Identity;
-    try {
-      identity = await options.verify(token);
-    } catch {
-      res.status(401).json({ error: 'Sessão inválida ou expirada.' });
-      return;
-    }
-    if (identity.email_verified !== true || !options.admins.has(identity.email?.toLowerCase() ?? '')) {
-      res.status(403).json({ error: 'Seu acesso ao monitoramento ainda não foi autorizado.' });
       return;
     }
     const period = req.query.period ?? '1h';

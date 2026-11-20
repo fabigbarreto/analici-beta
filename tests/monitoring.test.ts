@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { scryptSync } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
 import express from 'express';
 import { Pool } from 'pg';
+import { localAuth } from '../server/auth.ts';
 import { monitoringRouter, parseNodes, readDashboard } from '../server/monitoring.ts';
 import type { DashboardData, Period } from '../src/model.ts';
 
@@ -10,20 +12,21 @@ const empty = (period: Period): DashboardData => ({
   period, bucketMinutes: 1, start: '', end: '', nodes: [], points: [],
 });
 
-test('only a verified and authorized account can read the dashboard', async (t) => {
+test('local sessions protect telemetry, expire and can be revoked', async (t) => {
+  const origin = 'https://beta.example.test';
+  const password = 'fixture for a test account';
+  const salt = Buffer.alloc(16, 42);
+  const digest = scryptSync(password, salt, 32, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 });
+  let time = Date.now();
+  const auth = localAuth({ origin, username: 'operator', hash: ['scrypt', salt.toString('hex'), digest.toString('hex')].join('$') }, () => time);
   let reads = 0;
   let fail = false;
   const app = express();
+  app.use('/auth', auth.router);
+  app.use('/unconfigured-auth', localAuth(null).router);
   app.use('/unconfigured', monitoringRouter(null));
   app.use('/api', monitoringRouter({
-    admins: new Set(['operator@example.test']),
-    verify: async (token) => {
-      if (token === 'invalid') throw new Error('invalid');
-      return {
-        email: token === 'external' ? 'external@example.test' : 'operator@example.test',
-        email_verified: token !== 'unverified',
-      };
-    },
+    authenticated: auth.authenticated,
     read: async (period) => {
       reads++;
       if (fail) throw new Error('private connection detail');
@@ -36,26 +39,63 @@ test('only a verified and authorized account can read the dashboard', async (t) 
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   const base = 'http://127.0.0.1:' + address.port;
-  const call = (url: string, token?: string) => fetch(base + url, {
-    headers: token ? { Authorization: 'Bearer ' + token } : undefined,
+  const call = (url: string, cookie?: string) => fetch(base + url, {
+    headers: cookie ? { Cookie: cookie } : undefined,
   });
+  const login = (name: string, secret: string, source = origin) => fetch(base + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: source },
+    body: JSON.stringify({ username: name, password: secret }),
+  });
+
+  assert.equal((await call('/unconfigured-auth/session')).status, 503);
   assert.equal((await call('/unconfigured/dashboard')).status, 503);
   assert.equal((await call('/api/dashboard')).status, 401);
-  assert.equal((await call('/api/dashboard', 'invalid')).status, 401);
-  assert.equal((await call('/api/dashboard', 'unverified')).status, 403);
-  assert.equal((await call('/api/dashboard', 'external')).status, 403);
-  assert.equal((await call('/api/dashboard?period=constructor', 'verified')).status, 400);
-  assert.equal((await call('/api/dashboard?period=1h&period=24h', 'verified')).status, 400);
+  assert.equal((await call('/api/dashboard', '__Host-beta-session=' + 'A'.repeat(43))).status, 401);
+  assert.deepEqual(await (await call('/auth/session')).json(), { authenticated: false });
+  assert.equal((await login('operator', password, 'https://wrong.example.test')).status, 403);
+  assert.equal((await login('unknown', password)).status, 401);
+  assert.equal((await login('operator', 'invalid password')).status, 401);
+  const signedIn = await login('operator', password);
+  assert.equal(signedIn.status, 204);
+  const cookieHeader = signedIn.headers.get('set-cookie') ?? '';
+  assert.match(cookieHeader, /; HttpOnly/);
+  assert.match(cookieHeader, /; Secure/);
+  assert.match(cookieHeader, /; SameSite=Strict/);
+  assert.match(cookieHeader, /; Path=\//);
+  assert.doesNotMatch(cookieHeader, /; Domain=/);
+  const cookie = cookieHeader.split(';')[0];
+  assert.match(cookie, /^__Host-beta-session=/);
+  assert.deepEqual(await (await call('/auth/session', cookie)).json(), { authenticated: true });
+  assert.equal((await call('/api/dashboard?period=constructor', cookie)).status, 400);
+  assert.equal((await call('/api/dashboard?period=1h&period=24h', cookie)).status, 400);
   assert.equal(reads, 0);
 
-  const response = await call('/api/dashboard?period=6h', 'verified');
+  const response = await call('/api/dashboard?period=6h', cookie);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
   assert.deepEqual(await response.json(), empty('6h'));
   fail = true;
-  const error = await call('/api/dashboard', 'verified');
+  const error = await call('/api/dashboard', cookie);
   assert.equal(error.status, 503);
   assert.doesNotMatch(await error.text(), /private connection detail/);
+
+  const logout = (source: string) => fetch(base + '/auth/logout', {
+    method: 'POST', headers: { Cookie: cookie, Origin: source },
+  });
+  assert.equal((await logout('https://wrong.example.test')).status, 403);
+  assert.deepEqual(await (await call('/auth/session', cookie)).json(), { authenticated: true });
+  assert.equal((await logout(origin)).status, 204);
+  assert.equal((await call('/api/dashboard', cookie)).status, 401);
+
+  const secondLogin = await login('operator', password);
+  assert.equal(secondLogin.status, 204);
+  const secondCookie = secondLogin.headers.get('set-cookie')!.split(';')[0];
+  assert.equal((await login('operator', 'invalid password')).status, 401);
+  assert.equal((await login('operator', password)).status, 429);
+  time += 8 * 60 * 60 * 1000;
+  assert.equal((await call('/api/dashboard', secondCookie)).status, 401);
+  assert.equal((await login('operator', password)).status, 204);
 });
 
 test('node configuration rejects duplicate and invalid IDs', () => {

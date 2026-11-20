@@ -7,7 +7,7 @@ minuto. Lacunas indicam intervalos sem amostras. Os horários usam Brasília.
 
 ## Prévia
 
-Com Node.js 22 ou superior:
+Com Node.js 22 ou superior, execute:
 
 ```bash
 npm ci
@@ -17,20 +17,26 @@ npm run demo
 A demonstração abre localmente com dados fictícios identificados na tela.
 O modo de demonstração existe apenas no servidor de desenvolvimento do Vite.
 
-## Dados reais
+## Login local e dados reais
 
-Crie um `.env` local a partir de `.env.example`. Configure o login Google no
-projeto Firebase escolhido para o Beta e habilite o domínio da aplicação.
-Preencha as variáveis `VITE_FIREBASE_*` com a configuração web do mesmo projeto
-informado em `FIREBASE_PROJECT_ID`. O servidor aceita somente contas com
-e-mail verificado e incluídas em `MONITORING_ADMIN_EMAILS`, separado por vírgulas.
+Copie `.env.example` para `.env`. Defina `BETA_ADMIN_USERNAME` e execute
+o comando abaixo no terminal para criar a senha do administrador. O terminal
+oculta os caracteres e o script grava o hash da senha em um arquivo privado.
 
-Use uma credencial de leitura em `MONITORING_DATABASE_URL`, com acesso ao
-schema `telemetry` e às tabelas `telemetry.metric_batches` e
-`telemetry.host_metrics`. O servidor consulta o PostgreSQL em transações
-somente de leitura. Os identificadores em `MONITORING_NODES` devem corresponder
-ao campo `node_id` dos registros persistidos. A URL do banco e a lista de
-contas autorizadas são variáveis exclusivas do servidor.
+```bash
+mkdir -m 700 -p .secrets
+bash scripts/admin-password.sh .secrets/admin-password
+```
+
+Informe o caminho em `BETA_ADMIN_PASSWORD_HASH_FILE`. A sessão dura oito horas e
+termina ao sair da conta ou reiniciar o processo. Para trocar a senha, gere o
+hash em um arquivo novo, substitua o arquivo usado pelo serviço e reinicie o Beta.
+
+Coloque a URL PostgreSQL da credencial de leitura em um arquivo privado e aponte
+`MONITORING_DATABASE_URL_FILE` para ele. Conceda acesso ao schema `telemetry`
+e permissão de leitura nas tabelas `telemetry.metric_batches` e
+`telemetry.host_metrics`. Os identificadores em `MONITORING_NODES` devem
+corresponder ao campo `node_id` dos registros persistidos.
 
 ```bash
 npm run dev
@@ -38,14 +44,26 @@ npm run build
 npm start
 ```
 
-Para implantação, defina `HOST` e `PORT` conforme o destino e coloque a
-aplicação atrás do proxy HTTPS homologado. O ambiente de produção deve carregar
-os valores privados pelo seu mecanismo de segredos.
+## Implantação na própria VPS
+
+Construa a imagem com `docker build -t analici-beta:local .`. Em
+`deploy/.env`, defina `BETA_IMAGE=analici-beta:local`,
+`BETA_DATABASE_NETWORK` com o nome da rede privada do PostgreSQL,
+`BETA_PUBLIC_ORIGIN` com a URL HTTPS exata, `BETA_ADMIN_USERNAME` e
+`MONITORING_NODES`. Os arquivos `deploy/secrets/admin-password` e
+`deploy/secrets/database-url` ficam fora do Git. Permita leitura ao usuário 1000
+do contêiner, por exemplo com arquivos `root:1000` no modo `0440` e diretório
+`root:1000` no modo `0750`.
+
+Inicie o contêiner com `docker compose -f deploy/compose.yml up -d`. Ele atende
+na porta 3107 do próprio host. Use `deploy/Caddyfile.example` como exemplo para
+o proxy HTTPS local, com o domínio apontando para a VPS. O PostgreSQL atende pela
+rede privada do Docker.
 
 ## Testes
 
-`npm test` verifica autenticação, autorização, validação de parâmetros e
-respostas de erro. Para executar também a consulta real, defina
-`BETA_TEST_DATABASE_URL` com um PostgreSQL **local, vazio e descartável** chamado
-`monitoring_test`. O teste cria as tabelas fictícias para verificar dados
-persistidos, médias, lacunas e estados dos nós.
+`npm test` verifica autenticação, expiração e encerramento da sessão, limitação de
+tentativas e proteção da API de monitoramento. Para executar também a consulta
+real, defina `BETA_TEST_DATABASE_URL` com um PostgreSQL **local, vazio e
+descartável** chamado `monitoring_test`. O teste cria as tabelas fictícias
+para verificar dados persistidos, médias, lacunas e estados dos nós.

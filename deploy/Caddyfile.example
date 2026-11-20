@@ -1,0 +1,12 @@
+{
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+
+painel.example.org {
+	header {
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+	reverse_proxy 127.0.0.1:3107
+}
