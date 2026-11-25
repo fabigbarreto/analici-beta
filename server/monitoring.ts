@@ -1,24 +1,33 @@
 import { Router, type Request } from 'express';
 import type { Pool } from 'pg';
-import { periods, type DashboardData, type NodeConfig, type NodeStatus, type Period } from '../src/model.ts';
+import { executionsLimit, periods, type DashboardData, type ExecutionHistory, type NodeConfig, type NodeStatus, type Period } from '../src/model.ts';
 
 export interface DashboardOptions {
   authenticated: (request: Request) => boolean;
+  nodes: NodeConfig[];
   read: (period: Period) => Promise<DashboardData>;
+  readExecutions: (period: Period, nodeId?: string) => Promise<ExecutionHistory>;
 }
 
 export function monitoringRouter(options: DashboardOptions | null) {
   const router = Router();
-  router.get('/dashboard', async (req, res) => {
-    res.set('Cache-Control', 'private, no-store');
-    if (!options) {
+  const paths = ['/dashboard', '/executions'];
+  if (!options) {
+    router.get(paths, (_req, res) => {
+      res.set('Cache-Control', 'private, no-store');
       res.status(503).json({ error: 'O acesso à telemetria ainda não está configurado.' });
-      return;
-    }
+    });
+    return router;
+  }
+  router.get(paths, (req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
     if (!options.authenticated(req)) {
       res.status(401).json({ error: 'Entre para acessar o monitoramento.' });
       return;
     }
+    next();
+  });
+  router.get('/dashboard', async (req, res) => {
     const period = req.query.period ?? '1h';
     if (typeof period !== 'string' || !Object.hasOwn(periods, period)) {
       res.status(400).json({ error: 'Selecione 15m, 1h, 6h ou 24h.' });
@@ -30,7 +39,48 @@ export function monitoringRouter(options: DashboardOptions | null) {
       res.status(503).json({ error: 'O histórico de telemetria está indisponível.' });
     }
   });
+  router.get('/executions', async (req, res) => {
+    const { period = '15m', node } = req.query;
+    if (typeof period !== 'string' || !Object.hasOwn(periods, period)) {
+      res.status(400).json({ error: 'Selecione 15m, 1h, 6h ou 24h.' });
+      return;
+    }
+    if (node !== undefined && (typeof node !== 'string' || !options.nodes.some(({ id }) => id === node))) {
+      res.status(400).json({ error: 'Selecione uma VPS do monitoramento.' });
+      return;
+    }
+    try {
+      res.json(await options.readExecutions(period as Period, node));
+    } catch {
+      res.status(503).json({ error: 'O histórico de execuções está indisponível.' });
+    }
+  });
   return router;
+}
+
+export async function readExecutions(
+  pool: Pick<Pool, 'query'>, nodes: NodeConfig[], period: Period, nodeId?: string, end = new Date(),
+): Promise<ExecutionHistory> {
+  const start = new Date(end.getTime() - periods[period].minutes * 60_000);
+  const ids = nodes.filter(({ id }) => nodeId === undefined || nodeId === id).map(({ id }) => id);
+  const { rows } = await pool.query<{ node_id: string; received_at: Date }>(`
+    SELECT watched.node_id, recent.received_at
+    FROM unnest($1::text[]) AS watched(node_id)
+    CROSS JOIN LATERAL (
+      SELECT received_at
+      FROM telemetry.metric_batches
+      WHERE node_id = watched.node_id AND received_at >= $2 AND received_at <= $3
+      ORDER BY received_at DESC
+      LIMIT $4
+    ) AS recent
+    ORDER BY recent.received_at DESC, watched.node_id
+    LIMIT $4
+  `, [ids, start, end, executionsLimit]);
+  return {
+    updatedAt: end.toISOString(),
+    nodes: nodes.map(({ id, label }) => ({ id, label })),
+    batches: rows.map(({ node_id, received_at }) => ({ nodeId: node_id, receivedAt: received_at.toISOString() })),
+  };
 }
 
 export function parseNodes(raw: string): NodeConfig[] {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, type FormEvent, type MouseEven
 import { createRoot } from 'react-dom/client';
 import { Activity, ArrowRight, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
-import { Operations } from './operations';
+import { Executions } from './executions';
 import type { DashboardData, Period } from './model';
 import './styles.css';
 
@@ -25,16 +25,16 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const storagePage = pathname === '/armazenamento';
-  const operationsPage = pathname === '/ocorrencias';
+  const executionsPage = pathname === '/execucoes';
   const expired = useCallback((message: string) => {
     setSession('signed-out');
     setAuthError(message);
   }, []);
 
   useEffect(() => {
-    const label = operationsPage ? 'Ocorrências e Execuções' : storagePage ? 'Armazenamento' : 'Monitoramento';
+    const label = executionsPage ? 'Execuções' : storagePage ? 'Armazenamento' : 'Monitoramento';
     document.title = label + ' · ANALICI Beta';
-  }, [operationsPage, storagePage]);
+  }, [executionsPage, storagePage]);
 
   useEffect(() => {
     const syncPath = () => setPathname(window.location.pathname.replace(/\/$/, '') || '/');
@@ -160,23 +160,23 @@ function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navegação principal">
-          <a href="/" onClick={navigate} aria-current={storagePage || operationsPage ? undefined : 'page'}>
+          <a href="/" onClick={navigate} aria-current={storagePage || executionsPage ? undefined : 'page'}>
             <Activity size={17} aria-hidden="true" />Monitoramento
           </a>
           <a href="/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}>
             <HardDrive size={17} aria-hidden="true" />Armazenamento
           </a>
-          <a href="/ocorrencias" onClick={navigate} aria-current={operationsPage ? 'page' : undefined}>
-            <ListChecks size={17} aria-hidden="true" />Ocorrências e Execuções
+          <a href="/execucoes" onClick={navigate} aria-current={executionsPage ? 'page' : undefined}>
+            <ListChecks size={17} aria-hidden="true" />Execuções
           </a>
         </nav>
         {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
           <LogOut size={17} aria-hidden="true" />Sair
         </button>}
       </aside>
-      <main className="workspace" id={operationsPage ? 'ocorrencias' : storagePage ? 'armazenamento' : 'monitoramento'}>
+      <main className="workspace" id={executionsPage ? 'execucoes' : storagePage ? 'armazenamento' : 'monitoramento'}>
         {authError && <p className="session-error" role="alert">{authError}</p>}
-        {operationsPage ? <Operations demo={isDemo} onExpired={expired} />
+        {executionsPage ? <Executions demo={isDemo} onExpired={expired} />
           : <Dashboard load={loadDashboard} demo={isDemo} storagePage={storagePage} />}
       </main>
     </div>

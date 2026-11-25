@@ -108,9 +108,10 @@ def release(args):
         if active_image() != new_image_id:
             raise RuntimeError("O Beta não iniciou com a imagem da nova revisão.")
         wait_for("/api/health", 200)
-        wait_for("/ocorrencias", 200)
+        wait_for("/execucoes", 200)
         wait_for("/armazenamento", 200)
         wait_for("/api/monitoring/dashboard?period=15m", 401)
+        wait_for("/api/monitoring/executions?period=15m", 401)
         replace(revision_path, (args.revision + "\n").encode())
     except Exception:
         replace(env_path, old_env)
@@ -119,7 +120,7 @@ def release(args):
         wait_for("/api/health", 200)
         print("A versão anterior do Beta foi restaurada.", flush=True)
         raise
-    print("BETA_OCORRENCIAS_PUBLICADO", flush=True)
+    print("BETA_PUBLICADO", flush=True)
 
 
 def main():

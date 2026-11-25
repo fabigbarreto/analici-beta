@@ -96,14 +96,6 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .sign-in-form input + label { margin-top: 6px; }
 .sign-in-panel .primary-button { margin-top: 20px; width: 100%; background: #2456d5; border-color: #2456d5; color: #fff; }
 .sign-in-panel .error-text { color: #90282e; }
-.operations-actions a { text-decoration: none; }
-.operations-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-  gap: 12px;
-  margin: 0;
-}
-.operations-summary dd { margin: 4px 0 0; font-size: 22px; font-weight: 700; }
 .operations-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .operations-filters label { display: grid; gap: 4px; min-width: min(100%, 143px); font-size: 13px; font-weight: 650; }
 .operations-filters select {
@@ -123,7 +115,6 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .operations-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
 .operations-table th, .operations-table td { padding: 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .operations-table th { background: #f3f6fb; }
-.operations-table td.operations-detail { min-width: 180px; white-space: normal; overflow-wrap: anywhere; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) { .app { grid-template-columns: 178px minmax(0,1fr); } .charts { grid-template-columns: 1fr; } }
@@ -133,7 +124,7 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
   .sidebar .brand { grid-area: brand; }
   .sidebar nav { grid-area: navigation; display: flex; flex-wrap: wrap; margin: 0; }
   .sidebar nav a { gap: 6px; padding: 8px; }
-  .sidebar nav a[href="/ocorrencias"] { flex-basis: 100%; }
+  .sidebar nav a[href="/execucoes"] { flex-basis: 100%; }
   .logout { grid-area: logout; margin: 0; padding: 8px; }
   .topbar { position: static; align-items: flex-start; flex-direction: column; padding-top: 17px; padding-bottom: 15px; }
   .dashboard { padding-top: 18px; }

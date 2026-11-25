@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { localAuth } from './auth.ts';
-import { monitoringRouter, parseNodes, readDashboard, type DashboardOptions } from './monitoring.ts';
+import { monitoringRouter, parseNodes, readDashboard, readExecutions, type DashboardOptions } from './monitoring.ts';
 
 function secret(name: string) {
   const path = process.env[name + '_FILE'];
@@ -46,7 +46,11 @@ function readOptions(authenticated: DashboardOptions['authenticated']): Dashboar
       connectionTimeoutMillis: 5_000, idleTimeoutMillis: 30_000,
     });
     pool.on('error', () => console.error('Falha na conexão de leitura da telemetria.'));
-    return { authenticated, read: (period) => readDashboard(pool, nodes, period) };
+    return {
+      authenticated, nodes,
+      read: (period) => readDashboard(pool, nodes, period),
+      readExecutions: (period, nodeId) => readExecutions(pool, nodes, period, nodeId),
+    };
   } catch {
     console.error('A configuração do monitoramento é inválida.');
     return null;
@@ -61,6 +65,7 @@ app.get('/api/health', (_req, res) => { res.json({ status: 'ok' }); });
 app.use('/api/auth', auth.router);
 app.use('/api/monitoring', monitoringRouter(readOptions(auth.authenticated)));
 app.use('/api', (_req, res) => { res.status(404).json({ error: 'Rota não encontrada.' }); });
+app.get('/ocorrencias', (_req, res) => { res.redirect(308, '/execucoes'); });
 
 if (process.argv.includes('--dev')) {
   const { createServer } = await import('vite');
@@ -70,6 +75,6 @@ if (process.argv.includes('--dev')) {
   const dist = resolve('dist/client');
   app.use('/assets', express.static(resolve(dist, 'assets'), { index: false, immutable: true, maxAge: '1y' }));
   app.use(express.static(dist, { index: false }));
-  app.get(['/', '/armazenamento', '/ocorrencias'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
+  app.get(['/', '/armazenamento', '/execucoes'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
 }
 app.listen(port, host, () => console.log('ANALICI Beta iniciado na porta ' + port));

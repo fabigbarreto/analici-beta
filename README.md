@@ -7,17 +7,15 @@ a página de disco em `/armazenamento`. O histórico oferece períodos de 15 min
 os pontos representam 10 segundos e o painel consulta a cada 5 segundos. Os
 cartões de disco mostram os valores ocupado, disponível e total em GiB. Lacunas indicam intervalos sem amostras. Os horários usam Brasília.
 
-## Ocorrências e Execuções
+## Execuções
 
-O botão abaixo de **Armazenamento** abre `/ocorrencias`. A tela consulta o
-histórico do Atlas Web a cada 15 segundos enquanto a aba está visível.
-Mostra até 100 execuções por consulta, com filtros por robô, status e período.
-O resumo da extração por IA carrega em paralelo à exibição do histórico.
+O botão abaixo de **Armazenamento** abre `/execucoes`. O histórico mostra
+até 100 lotes de telemetria recebidos dos agentes do Analici, com filtros
+por VPS e período. A atualização ocorre a cada 15 segundos com a aba visível.
 
-O Monitoramento verifica a sessão local e o navegador usa o login do Atlas
-para buscar `/atlas/api/runs` e `/atlas/api/pipeline`. Se for preciso entrar
-no Atlas, a tela oferece um link em nova aba. Após entrar, volte e clique em
-**Atualizar**. A prévia local de telemetria dispensa o acesso ao Atlas.
+A consulta usa a sessão do Analici e as colunas `node_id` e `received_at`
+da tabela `telemetry.metric_batches`. O horário mostrado indica o recebimento
+do lote. O endereço anterior, `/ocorrencias`, redireciona para `/execucoes`.
 
 ## Prévia
 
