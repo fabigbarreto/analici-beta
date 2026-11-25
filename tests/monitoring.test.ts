@@ -5,8 +5,8 @@ import { test } from 'node:test';
 import express from 'express';
 import { Pool } from 'pg';
 import { localAuth } from '../server/auth.ts';
-import { monitoringRouter, parseNodes, readDashboard, readExecutions } from '../server/monitoring.ts';
-import { executionsLimit, type DashboardData, type Period } from '../src/model.ts';
+import { monitoringRouter, parseNodes, readDashboard } from '../server/monitoring.ts';
+import type { DashboardData, Period } from '../src/model.ts';
 
 const empty = (period: Period): DashboardData => ({
   period, bucketMinutes: 1, bucketSeconds: 60, start: '', end: '', nodes: [], points: [], storagePoints: [],
@@ -20,9 +20,6 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   let time = Date.now();
   const auth = localAuth({ origin, username: 'operator', hash: ['scrypt', salt.toString('hex'), digest.toString('hex')].join('$') }, () => time);
   let reads = 0;
-  const nodes = [{ id: 'node-1', label: 'VPS A', description: '' }];
-  const executions = { updatedAt: new Date(time).toISOString(), nodes: [{ id: 'node-1', label: 'VPS A' }], batches: [] };
-  const executionFilters: [Period, string | undefined][] = [];
   let fail = false;
   const app = express();
   app.use('/auth', auth.router);
@@ -30,15 +27,10 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   app.use('/unconfigured', monitoringRouter(null));
   app.use('/api', monitoringRouter({
     authenticated: auth.authenticated,
-    nodes,
     read: async (period) => {
       reads++;
       if (fail) throw new Error('private connection detail');
       return empty(period);
-    },
-    readExecutions: async (period, nodeId) => {
-      executionFilters.push([period, nodeId]);
-      return executions;
     },
   }));
   const server = app.listen(0, '127.0.0.1');
@@ -59,11 +51,6 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   assert.equal((await call('/unconfigured-auth/session')).status, 503);
   assert.equal((await call('/unconfigured/dashboard')).status, 503);
   assert.equal((await call('/api/dashboard')).status, 401);
-  const rejected = await call('/api/executions');
-  assert.equal(rejected.status, 401);
-  assert.equal(rejected.headers.get('www-authenticate'), null);
-  assert.equal(rejected.headers.get('cache-control'), 'private, no-store');
-  assert.equal(executionFilters.length, 0);
   assert.equal((await call('/api/dashboard', '__Host-beta-session=' + 'A'.repeat(43))).status, 401);
   assert.deepEqual(await (await call('/auth/session')).json(), { authenticated: false });
   assert.equal((await login('operator', password, 'https://wrong.example.test')).status, 403);
@@ -83,15 +70,6 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   assert.equal((await call('/api/dashboard?period=constructor', cookie)).status, 400);
   assert.equal((await call('/api/dashboard?period=1h&period=24h', cookie)).status, 400);
   assert.equal(reads, 0);
-  assert.equal((await call('/api/executions?node=unknown', cookie)).status, 400);
-  assert.equal((await call('/api/executions?node=node-1&node=node-1', cookie)).status, 400);
-  assert.equal((await call('/api/executions?period=constructor', cookie)).status, 400);
-  assert.deepEqual(executionFilters, []);
-  const history = await call('/api/executions?period=6h&node=node-1', cookie);
-  assert.equal(history.status, 200);
-  assert.equal(history.headers.get('cache-control'), 'private, no-store');
-  assert.deepEqual(await history.json(), executions);
-  assert.deepEqual(executionFilters, [['6h', 'node-1']]);
 
   const response = await call('/api/dashboard?period=6h', cookie);
   assert.equal(response.status, 200);
@@ -109,7 +87,6 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   assert.deepEqual(await (await call('/auth/session', cookie)).json(), { authenticated: true });
   assert.equal((await logout(origin)).status, 204);
   assert.equal((await call('/api/dashboard', cookie)).status, 401);
-  assert.equal((await call('/api/executions', cookie)).status, 401);
 
   const secondLogin = await login('operator', password);
   assert.equal(secondLogin.status, 204);
@@ -185,36 +162,4 @@ test('the PostgreSQL reader uses stored samples, preserves gaps and distinguishe
     '2026-11-20T13:49:10.000Z', '2026-11-20T13:50:10.000Z', '2026-11-20T13:55:30.000Z',
   ]);
   assert.ok(Date.parse(data.points[1].time) - Date.parse(data.points[0].time) > data.bucketMinutes * 60_000);
-
-  await pool.query(`
-    CREATE ROLE execution_reader LOGIN;
-    GRANT USAGE ON SCHEMA telemetry TO execution_reader;
-    GRANT SELECT (node_id, received_at) ON telemetry.metric_batches TO execution_reader;
-    INSERT INTO telemetry.metric_batches VALUES
-      ('node-5', '2026-11-20T14:00:30Z'), ('node-1', '2026-11-20T14:01:01Z');
-  `);
-  const end = new Date('2026-11-20T14:01:00Z');
-  const reader = await pool.connect();
-  try {
-    await reader.query('SET ROLE execution_reader');
-    const history = await readExecutions(reader, nodes, '15m', undefined, end);
-    assert.deepEqual(history.batches, [
-      { nodeId: 'node-1', receivedAt: '2026-11-20T14:00:00.000Z' },
-      { nodeId: 'node-2', receivedAt: '2026-11-20T13:55:30.000Z' },
-    ]);
-    const selected = await readExecutions(reader, nodes, '15m', 'node-2', end);
-    assert.deepEqual(selected.batches, history.batches.slice(1));
-    assert.deepEqual(selected.nodes, history.nodes);
-    assert.deepEqual((await readExecutions(reader, nodes, '15m', 'node-4', end)).batches, []);
-    await reader.query('RESET ROLE');
-    await reader.query(`
-      INSERT INTO telemetry.metric_batches (node_id, received_at)
-      SELECT 'node-1', '2026-11-20T14:00:00Z'::timestamptz - n * interval '1 second'
-      FROM generate_series(1, 110) AS n
-    `);
-    await reader.query('SET ROLE execution_reader');
-    assert.equal((await readExecutions(reader, nodes, '15m', undefined, end)).batches.length, executionsLimit);
-  } finally {
-    await reader.query('RESET ROLE').finally(() => reader.release());
-  }
 });

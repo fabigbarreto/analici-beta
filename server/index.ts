@@ -2,8 +2,9 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
+import { atlasExecutionsRouter, makeExecutionsReader } from './atlas-executions.ts';
 import { localAuth } from './auth.ts';
-import { monitoringRouter, parseNodes, readDashboard, readExecutions, type DashboardOptions } from './monitoring.ts';
+import { monitoringRouter, parseNodes, readDashboard, type DashboardOptions } from './monitoring.ts';
 
 function secret(name: string) {
   const path = process.env[name + '_FILE'];
@@ -46,13 +47,22 @@ function readOptions(authenticated: DashboardOptions['authenticated']): Dashboar
       connectionTimeoutMillis: 5_000, idleTimeoutMillis: 30_000,
     });
     pool.on('error', () => console.error('Falha na conexão de leitura da telemetria.'));
-    return {
-      authenticated, nodes,
-      read: (period) => readDashboard(pool, nodes, period),
-      readExecutions: (period, nodeId) => readExecutions(pool, nodes, period, nodeId),
-    };
+    return { authenticated, read: (period) => readDashboard(pool, nodes, period) };
   } catch {
     console.error('A configuração do monitoramento é inválida.');
+    return null;
+  }
+}
+
+function readAtlasOptions() {
+  const origin = process.env.ATLAS_EXECUTIONS_ORIGIN;
+  try {
+    const token = secret('ATLAS_EXECUTIONS_TOKEN');
+    if (!origin && !token) return null;
+    if (!origin || !token) throw new Error('Incomplete Atlas configuration');
+    return makeExecutionsReader(origin, token);
+  } catch {
+    console.error('A configuração de leitura das execuções do Atlas é inválida.');
     return null;
   }
 }
@@ -64,6 +74,7 @@ const auth = readAuth();
 app.get('/api/health', (_req, res) => { res.json({ status: 'ok' }); });
 app.use('/api/auth', auth.router);
 app.use('/api/monitoring', monitoringRouter(readOptions(auth.authenticated)));
+app.use('/api/atlas-executions', atlasExecutionsRouter(auth.authenticated, readAtlasOptions()));
 app.use('/api', (_req, res) => { res.status(404).json({ error: 'Rota não encontrada.' }); });
 app.get('/ocorrencias', (_req, res) => { res.redirect(308, '/execucoes'); });
 

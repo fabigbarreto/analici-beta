@@ -111,7 +111,7 @@ def release(args):
         wait_for("/execucoes", 200)
         wait_for("/armazenamento", 200)
         wait_for("/api/monitoring/dashboard?period=15m", 401)
-        wait_for("/api/monitoring/executions?period=15m", 401)
+        wait_for("/api/atlas-executions/runs", 401)
         replace(revision_path, (args.revision + "\n").encode())
     except Exception:
         replace(env_path, old_env)

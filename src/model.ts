@@ -51,14 +51,6 @@ export interface DashboardData {
   storagePoints: StorageSample[];
 }
 
-export const executionsLimit = 100;
-
-export interface ExecutionHistory {
-  updatedAt: string;
-  nodes: Pick<NodeConfig, 'id' | 'label'>[];
-  batches: { nodeId: string; receivedAt: string }[];
-}
-
 export const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 export const percent = (value: number | null | undefined) =>
   value == null ? '—' : decimal.format(value) + '%';

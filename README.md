@@ -9,13 +9,16 @@ cartões de disco mostram os valores ocupado, disponível e total em GiB. Lacuna
 
 ## Execuções
 
-O botão abaixo de **Armazenamento** abre `/execucoes`. O histórico mostra
-até 100 lotes de telemetria recebidos dos agentes do Analici, com filtros
-por VPS e período. A atualização ocorre a cada 15 segundos com a aba visível.
+O botão abaixo de **Armazenamento** abre `/execucoes`. A tela mostra as últimas
+100 execuções dos robôs do Atlas, com filtros por robô, status e período.
+O histórico é atualizado a cada 15 segundos com a aba visível. O resumo de
+extração por IA carrega separadamente.
 
-A consulta usa a sessão do Analici e as colunas `node_id` e `received_at`
-da tabela `telemetry.metric_batches`. O horário mostrado indica o recebimento
-do lote. O endereço anterior, `/ocorrencias`, redireciona para `/execucoes`.
+A tela usa a sessão do Analici. O servidor do Beta faz as duas consultas de
+leitura ao Atlas usando a origem HTTPS de `ATLAS_EXECUTIONS_ORIGIN` e o
+arquivo de token configurado em `ATLAS_EXECUTIONS_TOKEN_FILE`. Em Compose,
+monte o token pelo diretório privado de segredos. O endereço anterior,
+`/ocorrencias`, redireciona para `/execucoes`.
 
 ## Prévia
 
