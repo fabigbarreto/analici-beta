@@ -10,9 +10,9 @@ cartões de disco mostram os valores ocupado, disponível e total em GiB. Lacuna
 ## Ocorrências e Execuções
 
 O botão abaixo de **Armazenamento** abre `/ocorrencias`. A tela consulta o
-Atlas Web no mesmo domínio a cada 15 segundos enquanto a aba está visível.
-Mostra até 100 execuções por consulta, com filtros por robô, status e período,
-e exibe o resumo da extração por IA.
+histórico do Atlas Web a cada 15 segundos enquanto a aba está visível.
+Mostra até 100 execuções por consulta, com filtros por robô, status e período.
+O resumo da extração por IA carrega em paralelo à exibição do histórico.
 
 O Monitoramento verifica a sessão local e o navegador usa o login do Atlas
 para buscar `/atlas/api/runs` e `/atlas/api/pipeline`. Se for preciso entrar

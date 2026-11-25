@@ -68,6 +68,7 @@ if (process.argv.includes('--dev')) {
   app.use(vite.middlewares);
 } else {
   const dist = resolve('dist/client');
+  app.use('/assets', express.static(resolve(dist, 'assets'), { index: false, immutable: true, maxAge: '1y' }));
   app.use(express.static(dist, { index: false }));
   app.get(['/', '/armazenamento', '/ocorrencias'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
 }

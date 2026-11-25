@@ -9,6 +9,7 @@ const statuses = {
 } as const;
 const periods = [['24', 'Últimas 24 horas'], ['168', 'Últimos 7 dias'], ['720', 'Últimos 30 dias']] as const;
 const refreshMs = 15_000;
+const summaryRefreshMs = 120_000;
 
 interface Run {
   id: string;
@@ -38,7 +39,6 @@ interface Pipeline {
 interface OperationsState {
   query: string;
   runs: Run[] | null;
-  pipeline: Pipeline | null;
   updated: number | null;
   problem?: 'atlas-login' | 'history';
 }
@@ -113,6 +113,8 @@ export function Operations({ demo, onExpired }: { demo: boolean; onExpired: (mes
   const [period, setPeriod] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [state, setState] = useState<OperationsState | null>(null);
+  const [pipeline, setPipeline] = useState<Pipeline | null>();
+  const [knownWorkers, setKnownWorkers] = useState<Map<string, string>>(() => new Map());
 
   const params = new URLSearchParams({ limit: '100' });
   if (collector) params.set('collector', collector);
@@ -137,22 +139,24 @@ export function Operations({ demo, onExpired }: { demo: boolean; onExpired: (mes
           }
           const history = await readAtlas<{ ok: true; runs: Run[] }>('/atlas/api/runs?' + query, signal);
           if (!Array.isArray(history.runs)) throw new Error('Histórico inválido.');
-          const pipeline = await readAtlas<Pipeline>('/atlas/api/pipeline', signal).catch(() => null);
           if (controller.signal.aborted) return;
-          setState({
-            query, runs: history.runs, updated: Date.now(),
-            pipeline: Array.isArray(pipeline?.workers) && pipeline.extracao_ia ? pipeline : null,
+          setState({ query, runs: history.runs, updated: Date.now() });
+          setKnownWorkers((previous) => {
+            const next = new Map(previous);
+            for (const run of history.runs) next.set(run.collector, run.collector_label || run.collector);
+            return next;
           });
         } catch (error) {
           if (controller.signal.aborted) return;
           if (error instanceof AtlasLoginRequired) {
-            setState({ query, runs: null, pipeline: null, updated: null, problem: 'atlas-login' });
+            setState({ query, runs: null, updated: null, problem: 'atlas-login' });
+            setPipeline(undefined);
+            setKnownWorkers(new Map());
             return;
           }
           setState((previous) => ({
             query,
             runs: previous?.query === query ? previous.runs : null,
-            pipeline: previous?.pipeline ?? null,
             updated: previous?.query === query ? previous.updated : null,
             problem: 'history',
           }));
@@ -167,9 +171,37 @@ export function Operations({ demo, onExpired }: { demo: boolean; onExpired: (mes
     };
   }, [demo, onExpired, query, refresh]);
 
+  const historyLoaded = state?.runs != null;
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function updateSummary() {
+      if (!document.hidden) {
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12_000)]);
+        try {
+          const result = await readAtlas<Pipeline>('/atlas/api/pipeline', signal);
+          if (!Array.isArray(result.workers) || !result.extracao_ia) throw new Error('Resumo inválido.');
+          if (controller.signal.aborted) return;
+          setPipeline(result);
+        } catch {
+          if (!controller.signal.aborted) setPipeline(null);
+          return;
+        }
+      }
+      timer = setTimeout(() => void updateSummary(), summaryRefreshMs);
+    }
+    void updateSummary();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [historyLoaded, refresh]);
+
   const current = state?.query === query ? state : null;
-  const summary = state?.pipeline?.extracao_ia;
-  const workers = state?.pipeline?.workers ?? [];
+  const summary = pipeline?.extracao_ia;
+  const workers = new Map(knownWorkers);
+  for (const worker of pipeline?.workers ?? []) workers.set(worker.nome, worker.label);
 
   return (
     <>
@@ -211,7 +243,7 @@ export function Operations({ demo, onExpired }: { demo: boolean; onExpired: (mes
               </dl>
             </section>
           )}
-          {current?.runs && !summary && <p className="footer">Resumo de IA e lista de robôs temporariamente indisponíveis.</p>}
+          {historyLoaded && pipeline === null && <p className="footer">Resumo de IA temporariamente indisponível.</p>}
           <section className="chart" aria-labelledby="runs-heading">
             <div className="section-heading">
               <h2 id="runs-heading">Histórico de execuções</h2>
@@ -222,9 +254,9 @@ export function Operations({ demo, onExpired }: { demo: boolean; onExpired: (mes
               <label>Robô
                 <select value={collector} onChange={(event) => setCollector(event.target.value)}>
                   <option value="">Todos os robôs</option>
-                  {collector && !workers.some((worker) => worker.nome === collector) &&
+                  {collector && !workers.has(collector) &&
                     <option value={collector}>{collector}</option>}
-                  {workers.map((worker) => <option key={worker.nome} value={worker.nome}>{worker.label}</option>)}
+                  {Array.from(workers, ([id, label]) => <option key={id} value={id}>{label}</option>)}
                 </select>
               </label>
               <label>Status

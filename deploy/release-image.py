@@ -33,6 +33,13 @@ def compose(*args):
                "analici-beta", "-f", str(ROOT / "compose.yml"), *args, timeout=120)
 
 
+def active_image():
+    container = compose("ps", "-q", "beta")
+    if not re.fullmatch(r"[0-9a-f]{12,64}", container):
+        raise RuntimeError("O contêiner ativo do Beta não foi identificado.")
+    return run("docker", "inspect", "--format", "{{.Image}}", container)
+
+
 def wait_for(path, expected, attempts=20):
     for _ in range(attempts):
         try:
@@ -72,11 +79,8 @@ def release(args):
     new_tag = "analici-beta:" + args.revision[:7]
     if previous_revision != args.expect or old_tag == new_tag:
         raise RuntimeError("A revisão ativa diverge da revisão anterior esperada.")
-    container = compose("ps", "-q", "beta")
-    if not re.fullmatch(r"[0-9a-f]{12,64}", container):
-        raise RuntimeError("O contêiner ativo do Beta não foi identificado.")
     old_image_id = run("docker", "image", "inspect", "--format", "{{.Id}}", old_tag)
-    if run("docker", "inspect", "--format", "{{.Image}}", container) != old_image_id:
+    if active_image() != old_image_id:
         raise RuntimeError("A imagem disponível para reversão difere da imagem ativa.")
     new_env, replaced = re.subn(rb"(?m)^BETA_IMAGE=" + re.escape(old_tag.encode()) + rb"$",
                                b"BETA_IMAGE=" + new_tag.encode(), old_env)
@@ -93,6 +97,7 @@ def release(args):
     label = '{{index .Config.Labels "org.opencontainers.image.revision"}}'
     if run("docker", "image", "inspect", "--format", label, new_tag) != args.revision:
         raise RuntimeError("A revisão registrada na imagem não corresponde à revisão solicitada.")
+    new_image_id = run("docker", "image", "inspect", "--format", "{{.Id}}", new_tag)
     backup = Path(tempfile.mkdtemp(prefix=new_tag.split(":")[1] + "-", dir=ROOT / "releases"))
     (backup / "env.before").write_bytes(old_env)
     (backup / "revision.before").write_bytes(old_revision)
@@ -100,6 +105,8 @@ def release(args):
     try:
         replace(env_path, new_env)
         compose("up", "-d", "--no-deps", "--no-build", "--pull", "never", "beta")
+        if active_image() != new_image_id:
+            raise RuntimeError("O Beta não iniciou com a imagem da nova revisão.")
         wait_for("/api/health", 200)
         wait_for("/ocorrencias", 200)
         wait_for("/armazenamento", 200)

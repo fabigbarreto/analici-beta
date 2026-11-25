@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, type FormEvent } from 'react';
+import React, { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Activity, ArrowRight, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
@@ -7,10 +7,6 @@ import type { DashboardData, Period } from './model';
 import './styles.css';
 
 const isDemo = import.meta.env.DEV && import.meta.env.MODE === 'demo';
-const storagePage = /^\/armazenamento\/?$/.test(window.location.pathname);
-const operationsPage = /^\/ocorrencias\/?$/.test(window.location.pathname);
-if (operationsPage) document.title = 'Ocorrências e Execuções · ANALICI Beta';
-else if (storagePage) document.title = 'Armazenamento · ANALICI Beta';
 type Session = 'checking' | 'signed-out' | 'signed-in' | 'unavailable';
 
 function Brand() {
@@ -24,13 +20,37 @@ async function loadSample(period: Period, signal: AbortSignal) {
 }
 
 function App() {
+  const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/$/, '') || '/');
   const [session, setSession] = useState<Session>('checking');
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const storagePage = pathname === '/armazenamento';
+  const operationsPage = pathname === '/ocorrencias';
   const expired = useCallback((message: string) => {
     setSession('signed-out');
     setAuthError(message);
   }, []);
+
+  useEffect(() => {
+    const label = operationsPage ? 'Ocorrências e Execuções' : storagePage ? 'Armazenamento' : 'Monitoramento';
+    document.title = label + ' · ANALICI Beta';
+  }, [operationsPage, storagePage]);
+
+  useEffect(() => {
+    const syncPath = () => setPathname(window.location.pathname.replace(/\/$/, '') || '/');
+    window.addEventListener('popstate', syncPath);
+    return () => window.removeEventListener('popstate', syncPath);
+  }, []);
+
+  function navigate(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const next = event.currentTarget.pathname;
+    if (pathname === next) return;
+    window.history.pushState(null, '', next);
+    setPathname(next);
+    window.scrollTo(0, 0);
+  }
 
   useEffect(() => {
     if (isDemo) return;
@@ -140,13 +160,13 @@ function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navegação principal">
-          <a href="/" aria-current={storagePage || operationsPage ? undefined : 'page'}>
+          <a href="/" onClick={navigate} aria-current={storagePage || operationsPage ? undefined : 'page'}>
             <Activity size={17} aria-hidden="true" />Monitoramento
           </a>
-          <a href="/armazenamento" aria-current={storagePage ? 'page' : undefined}>
+          <a href="/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}>
             <HardDrive size={17} aria-hidden="true" />Armazenamento
           </a>
-          <a href="/ocorrencias" aria-current={operationsPage ? 'page' : undefined}>
+          <a href="/ocorrencias" onClick={navigate} aria-current={operationsPage ? 'page' : undefined}>
             <ListChecks size={17} aria-hidden="true" />Ocorrências e Execuções
           </a>
         </nav>
