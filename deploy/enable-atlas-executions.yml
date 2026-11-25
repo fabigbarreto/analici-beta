@@ -1,0 +1,31 @@
+---
+- name: Habilitar leitura de execuções no Atlas core
+  hosts: atlas-core
+  gather_facts: false
+  become: true
+  vars:
+    provision_command:
+      - /usr/bin/python3
+      - "{{ execution_stage }}/enable-atlas-executions-read.py"
+      - --verifier
+      - "{{ execution_stage }}/atlas-executions-scram"
+      - --grants
+      - "{{ execution_stage }}/atlas-executions-grants.sql"
+  tasks:
+    - name: Conferir papel, configuração e interface privada
+      ansible.builtin.command:
+        argv: "{{ provision_command + ['--check'] }}"
+      changed_when: false
+      check_mode: false
+
+    - name: Provisionar leitor do Atlas e conexão via WireGuard
+      ansible.builtin.command:
+        argv: "{{ provision_command }}"
+      register: atlas_execution_reader
+      changed_when: "'ATLAS_LEITURA_EXECUCOES_PRONTA' in atlas_execution_reader.stdout"
+      when: not ansible_check_mode
+
+    - name: Registrar resultado da provisão
+      ansible.builtin.debug:
+        var: atlas_execution_reader.stdout_lines
+      when: not ansible_check_mode

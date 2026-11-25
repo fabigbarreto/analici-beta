@@ -55,12 +55,17 @@ function readOptions(authenticated: DashboardOptions['authenticated']): Dashboar
 }
 
 function readAtlasOptions() {
-  const origin = process.env.ATLAS_EXECUTIONS_ORIGIN;
   try {
-    const token = secret('ATLAS_EXECUTIONS_TOKEN');
-    if (!origin && !token) return null;
-    if (!origin || !token) throw new Error('Incomplete Atlas configuration');
-    return makeExecutionsReader(origin, token);
+    const database = secret('ATLAS_EXECUTIONS_DATABASE_URL');
+    if (!database) return null;
+    const url = new URL(database);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('Invalid Atlas database protocol');
+    const pool = new Pool({
+      connectionString: url.href, max: 2, statement_timeout: 8_000,
+      connectionTimeoutMillis: 4_000, idleTimeoutMillis: 30_000,
+    });
+    pool.on('error', () => console.error('Falha na conexão de leitura das execuções do Atlas.'));
+    return makeExecutionsReader(pool);
   } catch {
     console.error('A configuração de leitura das execuções do Atlas é inválida.');
     return null;

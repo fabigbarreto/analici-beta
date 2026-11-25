@@ -1,10 +1,27 @@
 import { Router, type Request } from 'express';
+import type { Pool } from 'pg';
 
-const source = {
-  runs: '/api/runs',
-  summary: '/api/executions-summary',
-} as const;
-type Resource = keyof typeof source;
+const workers = new Map([
+  ['discovery_collector', 'Descoberta'],
+  ['detail_collector', 'Detalhamento'],
+  ['document_collector', 'Lista de Documentos'],
+  ['document_download_collector', 'Baixa Documentos'],
+  ['package_collector', 'Pacotes'],
+  ['format_collector', 'Formato'],
+  ['structure_collector', 'Fragmenta PDF'],
+  ['content_collector', 'Extrai Conteúdo'],
+  ['chunk_collector', 'Fragmenta Conteúdo'],
+  ['contract_ai_extraction_collector', 'Espelho documental IA'],
+  ['document_classification_collector', 'Classificação Documental'],
+  ['contract_consolidation_collector', 'Consolidação do Conhecimento'],
+  ['market_classification_worker', 'Classificação de Mercado'],
+]);
+
+const filterColumns = {
+  collector: (param: string) => 'collector_name = ' + param,
+  run_status: (param: string) => 'status = ' + param,
+  since_hours: (param: string) => 'started_at > now() - make_interval(hours => ' + param + '::int)',
+};
 
 const filters = {
   collector: /^[a-z0-9_-]{1,64}$/i,
@@ -12,42 +29,51 @@ const filters = {
   since_hours: /^(24|168|720)$/,
 } as const;
 
-export function makeExecutionsReader(origin: string, token: string, fetchData = fetch) {
-  const base = new URL(origin);
-  if (base.protocol !== 'https:' || base.origin !== origin || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
-    throw new Error('Invalid Atlas executions configuration');
-  }
-  return async (resource: Resource, query: URLSearchParams): Promise<unknown> => {
-    const target = new URL(source[resource], base);
-    target.search = query.toString();
-    const response = await fetchData(target, {
-      headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
-      redirect: 'error',
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok || !response.headers.get('content-type')?.includes('application/json') || !response.body) {
-      await response.body?.cancel().catch(() => undefined);
-      throw new Error('Atlas returned an invalid response');
-    }
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > 4 * 1024 * 1024) throw new Error('Atlas response exceeds the maximum size');
-        chunks.push(value);
+type ExecutionFilters = Partial<Record<keyof typeof filters, string>>;
+
+export function makeExecutionsReader(pool: Pick<Pool, 'query'>) {
+  return {
+    async runs(query: ExecutionFilters) {
+      const values: string[] = [];
+      const conditions: string[] = [];
+      for (const name of Object.keys(filterColumns) as (keyof typeof filterColumns)[]) {
+        const value = query[name];
+        if (value === undefined) continue;
+        values.push(value);
+        conditions.push(filterColumns[name]('$' + values.length));
       }
-    } finally {
-      await reader.cancel().catch(() => undefined);
-    }
-    const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    if (data?.ok !== true || (resource === 'runs' ? !Array.isArray(data.runs) : !Array.isArray(data.workers) || !data.extracao_ia)) {
-      throw new Error('Atlas returned an invalid result');
-    }
-    return data;
+      const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+      const { rows } = await pool.query<{ collector: string }>(`
+        SELECT id, collector_name AS collector, started_at, status, items_found,
+               error_message, metrics, parameters ->> 'modality_name' AS modality_name,
+               parameters ->> 'modality_code' AS modality_code,
+               extract(epoch FROM finished_at - started_at)::float8 AS duration_seconds
+        FROM public.collector_run
+        ${where}
+        ORDER BY started_at DESC, id DESC
+        LIMIT 100
+      `, values);
+      return { ok: true, runs: rows.map((row) => ({ ...row, collector_label: workers.get(row.collector) ?? row.collector })) };
+    },
+
+    async summary() {
+      const { rows } = await pool.query(`
+        WITH covered AS (
+          SELECT DISTINCT unnest(input_chunk_ids) AS id FROM public.ai_run
+          WHERE status = 'completed' AND expected_schema_version = 'fact_extraction_schema_v1'
+        )
+        SELECT count(*)::float8 AS execucoes, coalesce(sum(total_tokens), 0)::float8 AS tokens,
+               (SELECT count(*)::float8 FROM public.extracted_fact WHERE status = 'extracted') AS fatos_extraidos,
+               (SELECT count(*)::float8 FROM public.document_chunk c
+                WHERE c.status = 'completed' AND NOT EXISTS (SELECT 1 FROM covered WHERE covered.id = c.id)) AS backlog
+        FROM public.ai_run
+      `);
+      return {
+        ok: true,
+        workers: Array.from(workers, ([nome, label]) => ({ nome, label })),
+        extracao_ia: rows[0],
+      };
+    },
   };
 }
 
@@ -63,26 +89,25 @@ export function atlasExecutionsRouter(
       return;
     }
     const { resource } = req.params;
-    if (!Object.hasOwn(source, resource)) {
+    if (resource !== 'runs' && resource !== 'summary') {
       res.status(404).json({ error: 'Consulta não encontrada.' });
       return;
     }
-    const query = new URLSearchParams();
+    const query: ExecutionFilters = {};
     for (const [name, value] of Object.entries(req.query)) {
       if (resource !== 'runs' || !Object.hasOwn(filters, name) || typeof value !== 'string' ||
           !filters[name as keyof typeof filters].test(value)) {
         res.status(400).json({ error: 'Filtro de execução inválido.' });
         return;
       }
-      query.set(name, value);
+      query[name as keyof typeof filters] = value;
     }
-    if (resource === 'runs') query.set('limit', '100');
     if (!read) {
       res.status(503).json({ error: 'O histórico do Atlas está indisponível.' });
       return;
     }
     try {
-      res.json(await read(resource as Resource, query));
+      res.json(await (resource === 'runs' ? read.runs(query) : read.summary()));
     } catch {
       res.status(503).json({ error: 'O histórico do Atlas está indisponível. Tente atualizar.' });
     }

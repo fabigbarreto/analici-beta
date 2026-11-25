@@ -14,11 +14,20 @@ O botão abaixo de **Armazenamento** abre `/execucoes`. A tela mostra as última
 O histórico é atualizado a cada 15 segundos com a aba visível. O resumo de
 extração por IA carrega separadamente.
 
-A tela usa a sessão do Analici. O servidor do Beta faz as duas consultas de
-leitura ao Atlas usando a origem HTTPS de `ATLAS_EXECUTIONS_ORIGIN` e o
-arquivo de token configurado em `ATLAS_EXECUTIONS_TOKEN_FILE`. Em Compose,
-monte o token pelo diretório privado de segredos. O endereço anterior,
+A tela usa a sessão do Analici. O servidor do Beta lê os registros dos robôs
+pelo PostgreSQL do Atlas em rede privada. Configure o arquivo
+`ATLAS_EXECUTIONS_DATABASE_URL_FILE` com a conexão dedicada. Em Compose,
+monte o arquivo pelo diretório privado de segredos. Os privilégios dessa
+conta estão em `deploy/atlas-executions-grants.sql`. O endereço anterior,
 `/ocorrencias`, redireciona para `/execucoes`.
+
+Em produção, o playbook `deploy/enable-atlas-executions.yml` prepara o
+leitor no banco Atlas e o encaminhamento em `10.200.50.2:15432`, restrito
+ao WireGuard. O diretório privado de preparação informado como
+`execution_stage` contém o instalador Python, o arquivo de permissões SQL
+e o verificador SCRAM da conta. O instalador do Beta recebe a conexão
+privada em arquivo via `--atlas-database` e verifica o histórico e o
+resumo com a própria conta antes de registrar a nova revisão.
 
 ## Prévia
 

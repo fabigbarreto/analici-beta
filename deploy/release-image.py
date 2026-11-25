@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 from urllib.request import ProxyHandler, build_opener
 
 
@@ -21,8 +22,8 @@ ORIGIN = "http://127.0.0.1:3107"
 HTTP = build_opener(ProxyHandler({}))
 
 
-def run(*args, timeout=30):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+def run(*args, timeout=30, data=None):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, input=data)
     if result.returncode:
         raise RuntimeError(f"Falha em {' '.join(args[:2])}.")
     return result.stdout.strip()
@@ -33,11 +34,15 @@ def compose(*args):
                "analici-beta", "-f", str(ROOT / "compose.yml"), *args, timeout=120)
 
 
-def active_image():
+def active_container():
     container = compose("ps", "-q", "beta")
     if not re.fullmatch(r"[0-9a-f]{12,64}", container):
         raise RuntimeError("O contêiner ativo do Beta não foi identificado.")
-    return run("docker", "inspect", "--format", "{{.Image}}", container)
+    return container
+
+
+def active_image():
+    return run("docker", "inspect", "--format", "{{.Image}}", active_container())
 
 
 def wait_for(path, expected, attempts=20):
@@ -71,6 +76,39 @@ def replace(path, data):
             temporary.unlink(missing_ok=True)
 
 
+def verify_atlas():
+    source = """
+import { readFileSync } from 'node:fs';
+import { Pool } from 'pg';
+import { makeExecutionsReader } from './dist/atlas-executions.mjs';
+const pool = new Pool({
+  connectionString: readFileSync(process.env.ATLAS_EXECUTIONS_DATABASE_URL_FILE, 'utf8').trim(),
+  max: 2, connectionTimeoutMillis: 4000, statement_timeout: 8000,
+});
+try {
+  const history = makeExecutionsReader(pool);
+  const [runs, summary] = await Promise.all([history.runs({}), history.summary()]);
+  if (!Array.isArray(runs.runs) || !Array.isArray(summary.workers) || !summary.extracao_ia) throw Error();
+  console.log('ATLAS_EXECUCOES_VALIDADAS=' + runs.runs.length);
+} catch (error) {
+  const code = /^[A-Z0-9_]{2,20}$/.test(error?.code ?? '') ? error.code : 'QUERY_FAILED';
+  console.log('ATLAS_EXECUCOES_ERRO=' + code);
+  process.exitCode = 1;
+} finally {
+  await pool.end();
+}
+"""
+    result = subprocess.run(
+        ("docker", "exec", "-i", active_container(), "node", "--input-type=module", "-"),
+        input=source, text=True, capture_output=True, timeout=16,
+    )
+    message = result.stdout.strip()
+    if result.returncode or not re.fullmatch(r"ATLAS_EXECUCOES_VALIDADAS=\d+", message):
+        error = re.fullmatch(r"ATLAS_EXECUCOES_ERRO=([A-Z0-9_]{2,20})", message)
+        raise RuntimeError("A leitura do Atlas não foi validada" + (f" ({error[1]})." if error else "."))
+    print(message, flush=True)
+
+
 def release(args):
     env_path, revision_path = ROOT / ".env", ROOT / "revision"
     old_env, old_revision = env_path.read_bytes(), revision_path.read_bytes()
@@ -86,10 +124,22 @@ def release(args):
                                b"BETA_IMAGE=" + new_tag.encode(), old_env)
     if replaced != 1:
         raise RuntimeError("A configuração da imagem do Beta diverge do esperado.")
+    secret_path = ROOT / "secrets" / "atlas-executions-db"
+    database = None
+    if args.atlas_database:
+        database = args.atlas_database.read_bytes().strip()
+        target = urlparse(database)
+        if (target.scheme, target.username, target.hostname, target.port, target.path, target.query) != (
+            b"postgresql", b"analici_atlas_exec_read", b"10.200.50.2", 15432, b"/atlas", b"sslmode=disable"
+        ) or not target.password:
+            raise RuntimeError("A conexão dedicada do Atlas está fora do escopo desta atualização.")
+        if secret_path.exists() or re.search(rb"(?m)^ATLAS_EXECUTIONS_DATABASE_URL_FILE=", old_env):
+            raise RuntimeError("Já há uma conexão configurada. Preserve a credencial existente.")
+        new_env = new_env.rstrip(b"\n") + b"\nATLAS_EXECUTIONS_DATABASE_URL_FILE=/run/analici/atlas-executions-db\n"
     compose("config", "--quiet")
     wait_for("/api/health", 200, attempts=2)
     wait_for("/armazenamento", 200, attempts=2)
-    print(f"Verificado: somente BETA_IMAGE muda de {old_tag} para {new_tag}.", flush=True)
+    print(f"Verificado: imagem {old_tag} → {new_tag}.", flush=True)
     if args.check:
         return
 
@@ -102,7 +152,15 @@ def release(args):
     (backup / "env.before").write_bytes(old_env)
     (backup / "revision.before").write_bytes(old_revision)
     print(f"Configuração anterior guardada em {backup}.", flush=True)
+    installed_secret = False
     try:
+        if database is not None:
+            original = (ROOT / "secrets" / "database-url").stat()
+            with secret_path.open("xb") as file:
+                installed_secret = True
+                os.fchown(file.fileno(), original.st_uid, original.st_gid)
+                os.fchmod(file.fileno(), 0o440)
+                file.write(database + b"\n")
         replace(env_path, new_env)
         compose("up", "-d", "--no-deps", "--no-build", "--pull", "never", "beta")
         if active_image() != new_image_id:
@@ -112,12 +170,15 @@ def release(args):
         wait_for("/armazenamento", 200)
         wait_for("/api/monitoring/dashboard?period=15m", 401)
         wait_for("/api/atlas-executions/runs", 401)
+        verify_atlas()
         replace(revision_path, (args.revision + "\n").encode())
     except Exception:
         replace(env_path, old_env)
         replace(revision_path, old_revision)
         compose("up", "-d", "--no-deps", "--no-build", "--pull", "never", "beta")
         wait_for("/api/health", 200)
+        if installed_secret:
+            secret_path.unlink()
         print("A versão anterior do Beta foi restaurada.", flush=True)
         raise
     print("BETA_PUBLICADO", flush=True)
@@ -129,6 +190,7 @@ def main():
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--expect", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--atlas-database", type=Path)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if not all(re.fullmatch("[0-9a-f]{40}", value) for value in (args.expect, args.revision)):

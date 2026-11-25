@@ -9,7 +9,7 @@
   "scripts": {
     "demo": "vite --mode demo --host 127.0.0.1",
     "dev": "node --env-file-if-exists=.env --import tsx server/index.ts --dev",
-    "build": "tsc --noEmit && vite build --outDir dist/client && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.mjs",
+    "build": "tsc --noEmit && vite build --outDir dist/client && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.mjs && esbuild server/atlas-executions.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/atlas-executions.mjs",
     "start": "node --env-file-if-exists=.env dist/server.mjs",
     "test": "node --import tsx --test tests/*.test.ts"
   },
