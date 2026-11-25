@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowRight, HardDrive, LockKeyhole, LogOut } from 'lucide-react';
+import { Activity, ArrowRight, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
+import { Operations } from './operations';
 import type { DashboardData, Period } from './model';
 import './styles.css';
 
 const isDemo = import.meta.env.DEV && import.meta.env.MODE === 'demo';
 const storagePage = /^\/armazenamento\/?$/.test(window.location.pathname);
-if (storagePage) document.title = 'Armazenamento · ANALICI Beta';
+const operationsPage = /^\/ocorrencias\/?$/.test(window.location.pathname);
+if (operationsPage) document.title = 'Ocorrências e Execuções · ANALICI Beta';
+else if (storagePage) document.title = 'Armazenamento · ANALICI Beta';
 type Session = 'checking' | 'signed-out' | 'signed-in' | 'unavailable';
 
 function Brand() {
@@ -24,6 +27,10 @@ function App() {
   const [session, setSession] = useState<Session>('checking');
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const expired = useCallback((message: string) => {
+    setSession('signed-out');
+    setAuthError(message);
+  }, []);
 
   useEffect(() => {
     if (isDemo) return;
@@ -52,15 +59,12 @@ function App() {
     const response = await fetch('/api/monitoring/dashboard?period=' + period, { signal, cache: 'no-store' });
     if (response.status === 401) {
       const message = 'Sua sessão expirou. Entre novamente.';
-      if (!signal.aborted) {
-        setSession('signed-out');
-        setAuthError(message);
-      }
+      if (!signal.aborted) expired(message);
       throw new AccessError(message);
     }
     if (!response.ok) throw new Error('Não foi possível consultar a telemetria. Tente atualizar.');
     return response.json();
-  }, []);
+  }, [expired]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,20 +140,24 @@ function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navegação principal">
-          <a href="/" aria-current={storagePage ? undefined : 'page'}>
+          <a href="/" aria-current={storagePage || operationsPage ? undefined : 'page'}>
             <Activity size={17} aria-hidden="true" />Monitoramento
           </a>
           <a href="/armazenamento" aria-current={storagePage ? 'page' : undefined}>
             <HardDrive size={17} aria-hidden="true" />Armazenamento
+          </a>
+          <a href="/ocorrencias" aria-current={operationsPage ? 'page' : undefined}>
+            <ListChecks size={17} aria-hidden="true" />Ocorrências e Execuções
           </a>
         </nav>
         {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
           <LogOut size={17} aria-hidden="true" />Sair
         </button>}
       </aside>
-      <main className="workspace" id={storagePage ? "armazenamento" : "monitoramento"}>
+      <main className="workspace" id={operationsPage ? 'ocorrencias' : storagePage ? 'armazenamento' : 'monitoramento'}>
         {authError && <p className="session-error" role="alert">{authError}</p>}
-        <Dashboard load={loadDashboard} demo={isDemo} storagePage={storagePage} />
+        {operationsPage ? <Operations demo={isDemo} onExpired={expired} />
+          : <Dashboard load={loadDashboard} demo={isDemo} storagePage={storagePage} />}
       </main>
     </div>
   );

@@ -24,7 +24,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, .plot:focus-visible 
 .sidebar nav a { border-left: 3px solid transparent; font-weight: 650; }
 .sidebar nav a:hover, .sidebar nav a[aria-current="page"] { background: #18374e; }
 .sidebar nav a[aria-current="page"] { border-left-color: #80a1ff; }
-.sidebar nav a svg { color: #b3c7ff; }
+.sidebar nav a svg { flex: none; color: #b3c7ff; }
 .logout { margin-top: auto; background: none; border: 0; color: inherit; }
 .logout:hover { background: #18374e; }
 .workspace { min-width: 0; }
@@ -96,6 +96,34 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .sign-in-form input + label { margin-top: 6px; }
 .sign-in-panel .primary-button { margin-top: 20px; width: 100%; background: #2456d5; border-color: #2456d5; color: #fff; }
 .sign-in-panel .error-text { color: #90282e; }
+.operations-actions a { text-decoration: none; }
+.operations-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.operations-summary dd { margin: 4px 0 0; font-size: 22px; font-weight: 700; }
+.operations-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.operations-filters label { display: grid; gap: 4px; min-width: min(100%, 143px); font-size: 13px; font-weight: 650; }
+.operations-filters select {
+  min-height: 38px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 1px solid #aebed1;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+}
+.operations-scroll { max-width: 100%; overflow-x: auto; }
+.operations-scroll:focus-visible, .operations-filters select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.operations-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.operations-table th, .operations-table td { padding: 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.operations-table th { background: #f3f6fb; }
+.operations-table td.operations-detail { min-width: 180px; white-space: normal; overflow-wrap: anywhere; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) { .app { grid-template-columns: 178px minmax(0,1fr); } .charts { grid-template-columns: 1fr; } }
@@ -105,6 +133,7 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
   .sidebar .brand { grid-area: brand; }
   .sidebar nav { grid-area: navigation; display: flex; flex-wrap: wrap; margin: 0; }
   .sidebar nav a { gap: 6px; padding: 8px; }
+  .sidebar nav a[href="/ocorrencias"] { flex-basis: 100%; }
   .logout { grid-area: logout; margin: 0; padding: 8px; }
   .topbar { position: static; align-items: flex-start; flex-direction: column; padding-top: 17px; padding-bottom: 15px; }
   .dashboard { padding-top: 18px; }

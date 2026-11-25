@@ -7,6 +7,18 @@ a página de disco em `/armazenamento`. O histórico oferece períodos de 15 min
 os pontos representam 10 segundos e o painel consulta a cada 5 segundos. Os
 cartões de disco mostram os valores ocupado, disponível e total em GiB. Lacunas indicam intervalos sem amostras. Os horários usam Brasília.
 
+## Ocorrências e Execuções
+
+O botão abaixo de **Armazenamento** abre `/ocorrencias`. A tela consulta o
+Atlas Web no mesmo domínio a cada 15 segundos enquanto a aba está visível.
+Mostra até 100 execuções por consulta, com filtros por robô, status e período,
+e exibe o resumo da extração por IA.
+
+O Monitoramento verifica a sessão local e o navegador usa o login do Atlas
+para buscar `/atlas/api/runs` e `/atlas/api/pipeline`. Se for preciso entrar
+no Atlas, a tela oferece um link em nova aba. Após entrar, volte e clique em
+**Atualizar**. A prévia local de telemetria dispensa o acesso ao Atlas.
+
 ## Prévia
 
 Com Node.js 22 ou superior, execute:
@@ -61,6 +73,14 @@ Inicie o contêiner com `docker compose -f deploy/compose.yml up -d`. Ele atende
 na porta 3107 do próprio host. Use `deploy/Caddyfile.example` como exemplo para
 o proxy HTTPS local, com o domínio apontando para a VPS. O PostgreSQL atende pela
 rede privada do Docker.
+
+A atualização do Beta em `analici-app` usa `deploy/release-image.py`.
+Construa a imagem com a tag `analici-beta:<revisão curta>` e o rótulo
+`org.opencontainers.image.revision` com a revisão completa. Exporte a
+imagem e calcule o SHA-256 do arquivo. Na VPS, informe a imagem, o SHA-256,
+a revisão ativa esperada e a nova revisão. Use `--check` antes de aplicar.
+O instalador guarda a configuração anterior e a restaura se a checagem
+das rotas do Beta falhar.
 
 ## Testes
 

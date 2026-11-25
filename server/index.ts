@@ -69,6 +69,6 @@ if (process.argv.includes('--dev')) {
 } else {
   const dist = resolve('dist/client');
   app.use(express.static(dist, { index: false }));
-  app.get(['/', '/armazenamento'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
+  app.get(['/', '/armazenamento', '/ocorrencias'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
 }
 app.listen(port, host, () => console.log('ANALICI Beta iniciado na porta ' + port));
