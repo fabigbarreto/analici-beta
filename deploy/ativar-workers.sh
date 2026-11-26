@@ -49,22 +49,48 @@ printf 'FROM %s\nCOPY --chown=node:node dist/ /app/dist/\n' "$old" > "$ctx/Docke
 docker build --pull=false --network=none -t "$tag" "$ctx"
 backup=$(mktemp -d "$PWD/releases/workers-XXXXXXXX")
 cp -p .env revision "$backup/"
+aguardar_saude() {
+  local limite=$((SECONDS + 60)) http rc
+  while :; do
+    rc=0
+    http=$(curl -s --connect-timeout 1 --max-time 2 -o /dev/null -w '%{http_code}' "$url/api/health") || rc=$?
+    if [[ $rc == 0 && $http == 200 ]]; then return 0; fi
+    if (( SECONDS >= limite )); then
+      printf 'Saúde indisponível após 60 s (curl=%s, HTTP=%s).\n' "$rc" "$http" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
 rollback() {
-  printf 'Falha na ativação. Iniciando restauração.\n' >&2
   trap - ERR HUP INT TERM
+  printf 'Falha na etapa: %s. Iniciando restauração.\n' "$etapa" >&2
+  local failed_id
+  failed_id=$("${compose[@]}" ps -aq beta) || true
+  if [[ -n $failed_id ]]; then
+    docker inspect --format 'Estado={{.State.Status}} exit={{.State.ExitCode}} reinícios={{.RestartCount}}' "$failed_id" >&2 || true
+    docker logs --tail 60 "$failed_id" >"$backup/ativacao.log" 2>&1 || true
+    printf 'Log da ativação na VPS: %s/ativacao.log\n' "$backup" >&2
+  fi
   cp -p "$backup/.env" .env
   cp -p "$backup/revision" revision
   "${compose[@]}" up -d --no-deps --no-build --pull never beta
+  aguardar_saude || { echo 'Versão anterior selecionada, mas a saúde não foi confirmada.' >&2; exit 1; }
   echo "Configuração anterior restaurada." >&2
   exit 1
 }
 trap rollback ERR HUP INT TERM
+etapa='ativar imagem candidata'
 sed -i "s|^BETA_IMAGE=$configured$|BETA_IMAGE=$tag|" .env
 "${compose[@]}" up -d --no-deps --no-build --pull never beta
 [[ $(docker inspect --format '{{.Image}}' "$("${compose[@]}" ps -q beta)") == "$(docker image inspect --format '{{.Id}}' "$tag")" ]]
-curl -fsS --retry 12 --retry-connrefused --retry-delay 1 "$url/api/health" >/dev/null
+etapa='aguardar HTTP 200 em /mon/api/health'
+aguardar_saude
+etapa='abrir /mon/workers'
 curl -fsS "$url/workers" | grep -F '/mon/assets/' >/dev/null
+etapa='verificar autenticação da API dos Workers'
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/atlas-executions/workers")" = 401
+etapa='consultar Workers no Atlas'
 "${compose[@]}" exec -T beta node --input-type=module <<'JS'
 import {readFileSync} from 'node:fs';
 import {Pool} from 'pg';
