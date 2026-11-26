@@ -19,22 +19,32 @@ if [[ $old == "$tag" ]]; then
   echo "Esta imagem já está ativa."
   exit 0
 fi
-etapa='comparar imagem ativa com analici-mon:701a001'
-[[ $old == analici-mon:701a001 ]]
-etapa='conferir BETA_IMAGE no arquivo .env'
-grep -Fxq "BETA_IMAGE=$old" .env
-etapa='comparar revisão registrada com mon-701a001'
+etapa='identificar imagem da versão 701a001 e conferir o destino de rollback'
+case "$old" in
+  analici-mon:701a001|analici-beta:701a001) ;;
+  *) echo "Imagem de origem inesperada: $old" >&2; exit 1 ;;
+esac
+baseid=$(docker inspect --format '{{.Image}}' "$cid")
+[[ $(docker image inspect --format '{{.Id}}' "$old") == "$baseid" ]]
+etapa='conferir imagem de recuperação configurada no Compose'
+configured=$(sed -n 's/^BETA_IMAGE=//p' .env)
+[[ $configured == analici-beta:701a001 || $configured == analici-mon:701a001 ]]
+[[ $(docker image inspect --format '{{.Id}}' "$configured") == "$baseid" ]]
+[[ $("${compose[@]}" config --images beta) == "$configured" ]]
+etapa='confirmar o serviço Mon na porta 3107'
+url=http://127.0.0.1:3107/mon
+docker port "$cid" 3000/tcp | grep -Fx '127.0.0.1:3107' >/dev/null
+curl -fsS "$url/api/health" >/dev/null
+curl -fsS "$url/execucoes" | grep -F '/mon/assets/' >/dev/null
+etapa='ler revisão para o backup'
 revision=$(cat revision)
 printf 'Revisão registrada: %q\n' "$revision"
-[[ $revision == mon-701a001 ]]
 etapa='preparar imagem e cópia de recuperação'
 umask 077
 ctx=$(mktemp -d)
 trap 'rm -rf -- "$ctx"' EXIT
 cp "$1/workers.tgz" "$ctx/package.tgz"
 (cd "$ctx" && printf '%s  package.tgz\n' "$2" | sha256sum -c - && tar -xzf package.tgz && rm package.tgz)
-baseid=$(docker inspect --format '{{.Image}}' "$cid")
-[[ $(docker image inspect --format '{{.Id}}' "$old") == "$baseid" ]]
 printf 'FROM %s\nCOPY --chown=node:node dist/ /app/dist/\n' "$old" > "$ctx/Dockerfile"
 docker build --pull=false --network=none -t "$tag" "$ctx"
 backup=$(mktemp -d "$PWD/releases/workers-XXXXXXXX")
@@ -49,9 +59,9 @@ rollback() {
   exit 1
 }
 trap rollback ERR HUP INT TERM
-sed -i "s|^BETA_IMAGE=$old$|BETA_IMAGE=$tag|" .env
+sed -i "s|^BETA_IMAGE=$configured$|BETA_IMAGE=$tag|" .env
 "${compose[@]}" up -d --no-deps --no-build --pull never beta
-url=http://127.0.0.1:3107/mon
+[[ $(docker inspect --format '{{.Image}}' "$("${compose[@]}" ps -q beta)") == "$(docker image inspect --format '{{.Id}}' "$tag")" ]]
 curl -fsS --retry 12 --retry-connrefused --retry-delay 1 "$url/api/health" >/dev/null
 curl -fsS "$url/workers" | grep -F '/mon/assets/' >/dev/null
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/atlas-executions/workers")" = 401
