@@ -17,6 +17,8 @@ const workers = new Map([
   ['market_classification_worker', 'Classificação de Mercado'],
 ]);
 
+export const workerDefinitions = Array.from(workers, ([name, label]) => ({ name, label }));
+
 const filterColumns = {
   collector: (param: string) => 'collector_name = ' + param,
   run_status: (param: string) => 'status = ' + param,
@@ -74,6 +76,41 @@ export function makeExecutionsReader(pool: Pick<Pool, 'query'>) {
         extracao_ia: rows[0],
       };
     },
+
+    async workerHealth() {
+      const { rows } = await pool.query(`
+        WITH watched AS (
+          SELECT * FROM unnest($1::text[], $2::text[]) AS worker(name, label)
+        )
+        SELECT worker.name, worker.label,
+               latest.started_at AS last_started_at, latest.finished_at AS last_finished_at,
+               latest.status AS last_status, latest.items_found AS last_items_found,
+               latest.error_message AS last_error,
+               latest.duration_seconds AS last_duration_seconds,
+               coalesce(stats.runs_24h, 0)::int AS runs_24h,
+               coalesce(stats.successes_24h, 0)::int AS successes_24h,
+               coalesce(stats.failures_24h, 0)::int AS failures_24h,
+               stats.average_duration_seconds
+        FROM watched AS worker
+        LEFT JOIN LATERAL (
+          SELECT started_at, finished_at, status, items_found, error_message,
+                 extract(epoch FROM finished_at - started_at)::float8 AS duration_seconds
+          FROM public.collector_run
+          WHERE collector_name = worker.name
+          ORDER BY started_at DESC, id DESC LIMIT 1
+        ) AS latest ON true
+        LEFT JOIN LATERAL (
+          SELECT count(*) AS runs_24h,
+                 count(*) FILTER (WHERE status = 'success') AS successes_24h,
+                 count(*) FILTER (WHERE status = 'failed') AS failures_24h,
+                 avg(extract(epoch FROM finished_at - started_at))::float8 AS average_duration_seconds
+          FROM public.collector_run
+          WHERE collector_name = worker.name AND started_at >= now() - interval '24 hours'
+        ) AS stats ON true
+        ORDER BY worker.label
+      `, [workerDefinitions.map(({ name }) => name), workerDefinitions.map(({ label }) => label)]);
+      return { ok: true, workers: rows };
+    },
   };
 }
 
@@ -89,7 +126,7 @@ export function atlasExecutionsRouter(
       return;
     }
     const { resource } = req.params;
-    if (resource !== 'runs' && resource !== 'summary') {
+    if (resource !== 'runs' && resource !== 'summary' && resource !== 'workers') {
       res.status(404).json({ error: 'Consulta não encontrada.' });
       return;
     }
@@ -107,7 +144,8 @@ export function atlasExecutionsRouter(
       return;
     }
     try {
-      res.json(await (resource === 'runs' ? read.runs(query) : read.summary()));
+      res.json(await (resource === 'runs' ? read.runs(query)
+        : resource === 'workers' ? read.workerHealth() : read.summary()));
     } catch {
       res.status(503).json({ error: 'O histórico do Atlas está indisponível. Tente atualizar.' });
     }

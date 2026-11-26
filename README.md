@@ -1,6 +1,6 @@
-# ANALICI Beta
+# ANALICI Mon
 
-A primeira tela do Beta acompanha a disponibilidade, a última coleta, a CPU,
+A primeira tela do Mon acompanha a disponibilidade, a última coleta, a CPU,
 a memória e o uso do disco principal (`/`) das VPSs. Selecione um cartão
 para filtrar os gráficos. Use **Armazenamento** no menu lateral para abrir
 a página de disco em `/armazenamento`. O histórico oferece períodos de 15 minutos, 1, 6 e 24 horas. Na janela de 15 minutos,
@@ -99,3 +99,9 @@ tentativas e proteção da API de monitoramento. Para executar também a consult
 real, defina `BETA_TEST_DATABASE_URL` com um PostgreSQL **local, vazio e
 descartável** chamado `monitoring_test`. O teste cria as tabelas fictícias
 para verificar dados persistidos, médias, lacunas e estados dos nós.
+
+## Saúde dos Workers
+
+A rota `/mon/workers` resume os 13 Workers conhecidos a partir dos registros em `public.collector_run`: resultado e horário da última execução, execuções e falhas nas últimas 24 horas e duração média. A tela atualiza a cada 15 segundos e usa a mesma conexão de leitura configurada em `ATLAS_EXECUTIONS_DATABASE_URL_FILE`.
+
+O status representa o resultado da última execução registrada. A tabela não confirma que um processo esteja ativo entre execuções; isso requer um heartbeat ou uma fonte de monitoramento do processo.

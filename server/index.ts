@@ -76,12 +76,12 @@ const app = express();
 app.disable('x-powered-by');
 if (process.env.BETA_TRUST_PROXY === '1') app.set('trust proxy', 1);
 const auth = readAuth();
-app.get('/api/health', (_req, res) => { res.json({ status: 'ok' }); });
-app.use('/api/auth', auth.router);
-app.use('/api/monitoring', monitoringRouter(readOptions(auth.authenticated)));
-app.use('/api/atlas-executions', atlasExecutionsRouter(auth.authenticated, readAtlasOptions()));
-app.use('/api', (_req, res) => { res.status(404).json({ error: 'Rota não encontrada.' }); });
-app.get('/ocorrencias', (_req, res) => { res.redirect(308, '/execucoes'); });
+app.get('/mon/api/health', (_req, res) => { res.json({ status: 'ok' }); });
+app.use('/mon/api/auth', auth.router);
+app.use('/mon/api/monitoring', monitoringRouter(readOptions(auth.authenticated)));
+app.use('/mon/api/atlas-executions', atlasExecutionsRouter(auth.authenticated, readAtlasOptions()));
+app.use('/mon/api', (_req, res) => { res.status(404).json({ error: 'Rota não encontrada.' }); });
+app.get(['/ocorrencias','/mon/ocorrencias'], (_req, res) => { res.redirect(308, '/mon/execucoes'); });
 
 if (process.argv.includes('--dev')) {
   const { createServer } = await import('vite');
@@ -89,8 +89,8 @@ if (process.argv.includes('--dev')) {
   app.use(vite.middlewares);
 } else {
   const dist = resolve('dist/client');
-  app.use('/assets', express.static(resolve(dist, 'assets'), { index: false, immutable: true, maxAge: '1y' }));
-  app.use(express.static(dist, { index: false }));
-  app.get(['/', '/armazenamento', '/execucoes'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
+  app.use('/mon/assets', express.static(resolve(dist, 'assets'), { index: false, immutable: true, maxAge: '1y' }));
+  app.use('/mon', express.static(dist, { index: false }));
+  app.get(['/mon/', '/mon/armazenamento', '/mon/execucoes', '/mon/workers'], (_req, res) => { res.sendFile(resolve(dist, 'index.html')); });
 }
-app.listen(port, host, () => console.log('ANALICI Beta iniciado na porta ' + port));
+app.listen(port, host, () => console.log('ANALICI Mon iniciado na porta ' + port));

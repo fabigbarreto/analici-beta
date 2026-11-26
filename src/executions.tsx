@@ -130,7 +130,7 @@ export function Executions({ demo, onExpired }: { demo: boolean; onExpired: (mes
       if (!document.hidden) {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12_000)]);
         try {
-          const path = '/api/atlas-executions/runs' + (query ? '?' + query : '');
+          const path = '/mon/api/atlas-executions/runs' + (query ? '?' + query : '');
           const history = await readAtlas<{ ok: true; runs: Run[] }>(path, signal);
           if (!Array.isArray(history.runs)) throw new Error('Histórico inválido.');
           if (controller.signal.aborted) return;
@@ -172,7 +172,7 @@ export function Executions({ demo, onExpired }: { demo: boolean; onExpired: (mes
       if (!document.hidden) {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12_000)]);
         try {
-          const result = await readAtlas<Pipeline>('/api/atlas-executions/summary', signal);
+          const result = await readAtlas<Pipeline>('/mon/api/atlas-executions/summary', signal);
           if (!Array.isArray(result.workers) || !result.extracao_ia) throw new Error('Resumo inválido.');
           if (controller.signal.aborted) return;
           setPipeline(result);

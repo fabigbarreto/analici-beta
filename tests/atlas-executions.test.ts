@@ -18,6 +18,7 @@ test('the Analici session protects the Atlas execution history', async (t) => {
       return history;
     },
     summary: async () => ({ ok: true, workers: [], extracao_ia: { execucoes: 0 } }),
+    workerHealth: async () => ({ ok: true, workers: [] }),
   }));
   const server = app.listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((done) => server.close(() => done())));

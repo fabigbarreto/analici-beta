@@ -123,6 +123,13 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
 .operations-table th, .operations-table td { padding: 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .operations-table th { background: #f3f6fb; }
 .operations-table td.operations-detail { min-width: 180px; white-space: normal; overflow-wrap: anywhere; }
+.worker-table td { vertical-align: middle; }
+.worker-name { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+.worker-name svg { color: #2758b2; flex: none; }
+.worker-table code { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.worker-table .badge { align-items: center; gap: 5px; }
+.worker-error { display: block; max-width: 250px; margin-top: 5px; color: #90282e; font-size: 12px; white-space: normal; }
+.worker-failures { color: #9c3034; font-weight: 700; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) { .app { grid-template-columns: 178px minmax(0,1fr); } .charts { grid-template-columns: 1fr; } }
@@ -133,6 +140,7 @@ h2 { font-size: 18px; font-weight: 700; letter-spacing: -.012em; }
   .sidebar nav { grid-area: navigation; display: flex; flex-wrap: wrap; margin: 0; }
   .sidebar nav a { gap: 6px; padding: 8px; }
   .sidebar nav a[href="/execucoes"] { flex-basis: 100%; }
+  .sidebar nav a[href="/workers"] { flex-basis: 100%; }
   .logout { grid-area: logout; margin: 0; padding: 8px; }
   .topbar { position: static; align-items: flex-start; flex-direction: column; padding-top: 17px; padding-bottom: 15px; }
   .dashboard { padding-top: 18px; }

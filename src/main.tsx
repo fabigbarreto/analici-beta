@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowRight, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
+import { Activity, ArrowRight, Bot, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
 import { Executions } from './executions';
+import { Workers } from './workers';
 import type { DashboardData, Period } from './model';
 import './styles.css';
 
@@ -10,7 +11,7 @@ const isDemo = import.meta.env.DEV && import.meta.env.MODE === 'demo';
 type Session = 'checking' | 'signed-out' | 'signed-in' | 'unavailable';
 
 function Brand() {
-  return <div className="brand"><span className="brand-icon"><Activity size={21} aria-hidden="true" /></span><span>ANALICI <small>Beta</small></span></div>;
+  return <div className="brand"><span className="brand-icon"><Activity size={21} aria-hidden="true" /></span><span>ANALICI <small>Mon</small></span></div>;
 }
 
 async function loadSample(period: Period, signal: AbortSignal) {
@@ -24,17 +25,18 @@ function App() {
   const [session, setSession] = useState<Session>('checking');
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const storagePage = pathname === '/armazenamento';
-  const executionsPage = pathname === '/execucoes';
+  const storagePage = pathname === '/mon/armazenamento';
+  const executionsPage = pathname === '/mon/execucoes';
+  const workersPage = pathname === '/mon/workers';
   const expired = useCallback((message: string) => {
     setSession('signed-out');
     setAuthError(message);
   }, []);
 
   useEffect(() => {
-    const label = executionsPage ? 'Execuções' : storagePage ? 'Armazenamento' : 'Monitoramento';
-    document.title = label + ' · ANALICI Beta';
-  }, [executionsPage, storagePage]);
+    const label = workersPage ? 'Sa\u00fade dos Workers' : executionsPage ? 'Execuções' : storagePage ? 'Armazenamento' : 'Monitoramento';
+    document.title = label + ' · ANALICI Mon';
+  }, [executionsPage, storagePage, workersPage]);
 
   useEffect(() => {
     const syncPath = () => setPathname(window.location.pathname.replace(/\/$/, '') || '/');
@@ -57,7 +59,7 @@ function App() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const response = await fetch('/api/auth/session', { signal: controller.signal, cache: 'no-store' });
+        const response = await fetch('/mon/api/auth/session', { signal: controller.signal, cache: 'no-store' });
         if (response.status === 503) {
           setSession('unavailable');
           return;
@@ -76,7 +78,7 @@ function App() {
 
   const loadDashboard = useCallback(async (period: Period, signal: AbortSignal): Promise<DashboardData> => {
     if (isDemo) return loadSample(period, signal);
-    const response = await fetch('/api/monitoring/dashboard?period=' + period, { signal, cache: 'no-store' });
+    const response = await fetch('/mon/api/monitoring/dashboard?period=' + period, { signal, cache: 'no-store' });
     if (response.status === 401) {
       const message = 'Sua sessão expirou. Entre novamente.';
       if (!signal.aborted) expired(message);
@@ -94,7 +96,7 @@ function App() {
     setAuthError('');
     setSubmitting(true);
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/mon/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: fields.get('username'), password: fields.get('password') }),
@@ -118,7 +120,7 @@ function App() {
     setSubmitting(true);
     setAuthError('');
     try {
-      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await fetch('/mon/api/auth/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Erro ao encerrar a sessão.');
       setSession('signed-out');
     } catch {
@@ -160,23 +162,27 @@ function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navegação principal">
-          <a href="/" onClick={navigate} aria-current={storagePage || executionsPage ? undefined : 'page'}>
+          <a href="/mon/" onClick={navigate} aria-current={storagePage || executionsPage || workersPage ? undefined : 'page'}>
             <Activity size={17} aria-hidden="true" />Monitoramento
           </a>
-          <a href="/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}>
+          <a href="/mon/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}>
             <HardDrive size={17} aria-hidden="true" />Armazenamento
           </a>
-          <a href="/execucoes" onClick={navigate} aria-current={executionsPage ? 'page' : undefined}>
+          <a href="/mon/execucoes" onClick={navigate} aria-current={executionsPage ? 'page' : undefined}>
             <ListChecks size={17} aria-hidden="true" />Execuções
           </a>
-        </nav>
+          <a href="/mon/workers" onClick={navigate} aria-current={workersPage ? 'page' : undefined}>
+            <Bot size={17} aria-hidden="true" />Saúde dos Workers
+          </a>
+      </nav>
         {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
           <LogOut size={17} aria-hidden="true" />Sair
         </button>}
       </aside>
-      <main className="workspace" id={executionsPage ? 'execucoes' : storagePage ? 'armazenamento' : 'monitoramento'}>
+      <main className="workspace" id={workersPage ? 'workers' : executionsPage ? 'execucoes' : storagePage ? 'armazenamento' : 'monitoramento'}>
         {authError && <p className="session-error" role="alert">{authError}</p>}
-        {executionsPage ? <Executions demo={isDemo} onExpired={expired} />
+        {workersPage ? <Workers demo={isDemo} onExpired={expired} />
+          : executionsPage ? <Executions demo={isDemo} onExpired={expired} />
           : <Dashboard load={loadDashboard} demo={isDemo} storagePage={storagePage} />}
       </main>
     </div>
