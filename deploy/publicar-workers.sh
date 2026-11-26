@@ -9,4 +9,8 @@ hash=$(sha256sum "$tmp/workers.tgz" | cut -d' ' -f1)
 remote=$(ssh -o StrictHostKeyChecking=yes analici-app 'mktemp -d /tmp/mon-workers.XXXXXXXX')
 [[ $remote =~ ^/tmp/mon-workers\.[[:alnum:]]{8}$ ]]
 scp -o StrictHostKeyChecking=yes "$tmp/workers.tgz" "$repo/deploy/ativar-workers.sh" "analici-app:$remote/"
-ssh -tt -o StrictHostKeyChecking=yes analici-app "sudo bash '$remote/ativar-workers.sh' '$remote' '$hash'"
+ssh -tt -o StrictHostKeyChecking=yes analici-app "sudo bash '$remote/ativar-workers.sh' '$remote' '$hash'" || {
+  rc=$?
+  printf 'Publicação interrompida. Código retornado por SSH/sudo: %s\n' "$rc" >&2
+  exit "$rc"
+}

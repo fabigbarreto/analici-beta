@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
+etapa='validar argumentos'
+trap 'rc=$?; printf "FALHA: %s (linha %s, código %s)\n" "$etapa" "$LINENO" "$rc" >&2' ERR
+echo 'Ativador iniciado na VPS.'
 [[ $# == 2 && $1 =~ ^/tmp/mon-workers\.[[:alnum:]]{8}$ && $2 =~ ^[a-f0-9]{64}$ ]]
+etapa='abrir diretório da implantação'
 cd /srv/analici/beta
+etapa='obter trava exclusiva da publicação'
 exec 9>/run/lock/analici-beta-deploy.lock
 flock -n 9
+etapa='identificar contêiner beta no Compose'
 compose=(docker compose --project-name analici-beta -f compose.yml)
 cid=$("${compose[@]}" ps -q beta)
 old=$(docker inspect --format '{{.Config.Image}}' "$cid")
+printf 'Imagem ativa: %s\n' "$old"
 tag=analici-mon:workers-${2:0:16}
 if [[ $old == "$tag" ]]; then
   echo "Esta imagem já está ativa."
   exit 0
 fi
+etapa='comparar imagem ativa com analici-mon:701a001'
 [[ $old == analici-mon:701a001 ]]
+etapa='conferir BETA_IMAGE no arquivo .env'
 grep -Fxq "BETA_IMAGE=$old" .env
-[[ $(cat revision) == mon-701a001 ]]
+etapa='comparar revisão registrada com mon-701a001'
+revision=$(cat revision)
+printf 'Revisão registrada: %q\n' "$revision"
+[[ $revision == mon-701a001 ]]
+etapa='preparar imagem e cópia de recuperação'
 umask 077
 ctx=$(mktemp -d)
 trap 'rm -rf -- "$ctx"' EXIT
@@ -27,6 +40,7 @@ docker build --pull=false --network=none -t "$tag" "$ctx"
 backup=$(mktemp -d "$PWD/releases/workers-XXXXXXXX")
 cp -p .env revision "$backup/"
 rollback() {
+  printf 'Falha na ativação. Iniciando restauração.\n' >&2
   trap - ERR HUP INT TERM
   cp -p "$backup/.env" .env
   cp -p "$backup/revision" revision
