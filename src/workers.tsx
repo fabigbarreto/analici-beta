@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, CircleAlert, CircleCheck, CircleDashed, Clock3, RefreshCw } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleDashed, Clock3, RefreshCw } from 'lucide-react';
 import { brDate, brTimeWithSeconds, decimal } from './model';
 
 type WorkerRunStatus = 'success' | 'failed' | 'running' | string;
@@ -31,8 +31,8 @@ function duration(value: number | null) {
 
 function RunState({ status }: { status: WorkerRunStatus | null }) {
   if (status === 'running') return <span className="badge delayed"><CircleDashed size={14} aria-hidden="true" />Em execução</span>;
-  if (status === 'failed') return <span className="badge offline"><CircleAlert size={14} aria-hidden="true" />Última execução falhou</span>;
-  if (status === 'success') return <span className="badge online"><CircleCheck size={14} aria-hidden="true" />Última execução concluída</span>;
+  if (status === 'failed') return <span className="badge offline" title="Última execução falhou"><CircleAlert size={14} aria-hidden="true" /><span><span className="sr-only">Última execução </span>Falhou</span></span>;
+  if (status === 'success') return <span className="badge online" title="Última execução concluída"><CircleCheck size={14} aria-hidden="true" /><span><span className="sr-only">Última execução </span>Concluída</span></span>;
   return <span className="badge"><Clock3 size={14} aria-hidden="true" />Sem histórico</span>;
 }
 
@@ -40,28 +40,36 @@ function WorkerCard({ worker }: { worker: WorkerHealth }) {
   return (
     <li className="chart worker-card">
       <div>
-        <h3 className="worker-name"><Bot size={18} aria-hidden="true" /><span>{worker.label}</span></h3>
-        <code className="worker-id">{worker.name}</code>
+        <h3 className="worker-name">{worker.label}</h3>
+        <code className="worker-id" title={worker.name}>{worker.name}</code>
       </div>
       <div className="worker-result">
         <RunState status={worker.last_status} />
-        {worker.last_error && <p className="worker-error">{worker.last_error}</p>}
+        {worker.last_error && (
+          <details className="worker-error">
+            <summary>
+              <span className="worker-error-preview" aria-hidden="true">{worker.last_error}</span>
+              <span className="sr-only">Detalhes da falha de {worker.label}</span>
+            </summary>
+            <p>{worker.last_error}</p>
+          </details>
+        )}
       </div>
       <dl className="worker-details">
         <div className="worker-last-run">
-          <dt>Última execução</dt>
+          <dt title="Última execução">Última<span className="sr-only"> execução</span></dt>
           <dd>{date(worker.last_started_at)}</dd>
         </div>
         <div>
-          <dt>Execuções · 24h</dt>
+          <dt title="Execuções nas últimas 24 horas">Execuções<span className="sr-only"> nas últimas 24 horas</span></dt>
           <dd>{count(worker.runs_24h)}</dd>
         </div>
         <div>
-          <dt>Falhas · 24h</dt>
+          <dt title="Falhas nas últimas 24 horas">Falhas<span className="sr-only"> nas últimas 24 horas</span></dt>
           <dd className={worker.failures_24h ? 'worker-failures' : undefined}>{count(worker.failures_24h)}</dd>
         </div>
         <div>
-          <dt>Duração média</dt>
+          <dt title="Duração média">Dur. média</dt>
           <dd>{duration(worker.average_duration_seconds)}</dd>
         </div>
       </dl>
@@ -114,7 +122,7 @@ export function Workers({ demo, onExpired }: { demo: boolean; onExpired: (messag
   const executions = workers?.reduce((sum, worker) => sum + worker.runs_24h, 0) ?? 0;
 
   return <>
-    <header className="topbar">
+    <header className="topbar workers-topbar">
       <div><h1>Saúde dos Workers</h1><p>Atividade e resultados recentes dos robôs do Atlas</p></div>
       {!demo && <div className="toolbar">
         {updated != null && <span className="muted">Atualizado às {brTimeWithSeconds.format(updated)}</span>}
@@ -123,7 +131,7 @@ export function Workers({ demo, onExpired }: { demo: boolean; onExpired: (messag
         </button>
       </div>}
     </header>
-    <div className="dashboard">
+    <div className="dashboard workers-dashboard">
       {demo ? <p className="placeholder">A saúde dos Workers é consultada no histórico do Atlas e fica disponível no painel publicado.</p> : <>
         {error && <p className="notice" role="alert">{error}</p>}
         <section aria-labelledby="workers-overview">

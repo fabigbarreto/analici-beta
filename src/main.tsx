@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowRight, Bot, HardDrive, ListChecks, LockKeyhole, LogOut } from 'lucide-react';
+import { Activity, ArrowRight, Bot, HardDrive, ListChecks, LockKeyhole, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Dashboard, AccessError } from './dashboard';
 import { Executions } from './executions';
 import { Workers } from './workers';
@@ -22,12 +22,17 @@ async function loadSample(period: Period, signal: AbortSignal) {
 
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/$/, '') || '/');
+  const [menuCollapsed, setMenuCollapsed] = useState(() => {
+    try { return localStorage.getItem('analici-mon:menu-collapsed') === 'true'; }
+    catch { return false; }
+  });
   const [session, setSession] = useState<Session>('checking');
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const storagePage = pathname === '/mon/armazenamento';
   const executionsPage = pathname === '/mon/execucoes';
   const workersPage = pathname === '/mon/workers';
+  const menuAction = menuCollapsed ? 'Expandir menu' : 'Recolher menu';
   const expired = useCallback((message: string) => {
     setSession('signed-out');
     setAuthError(message);
@@ -43,6 +48,11 @@ function App() {
     window.addEventListener('popstate', syncPath);
     return () => window.removeEventListener('popstate', syncPath);
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('analici-mon:menu-collapsed', String(menuCollapsed)); }
+    catch { /* Keep the preference in memory when storage is unavailable. */ }
+  }, [menuCollapsed]);
 
   function navigate(event: MouseEvent<HTMLAnchorElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -158,25 +168,36 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={menuCollapsed ? 'app menu-collapsed' : 'app'}>
       <aside className="sidebar">
-        <Brand />
-        <nav aria-label="Navegação principal">
-          <a href="/mon/" onClick={navigate} aria-current={storagePage || executionsPage || workersPage ? undefined : 'page'}>
-            <Activity size={17} aria-hidden="true" />Monitoramento
+        <div className="sidebar-heading">
+          <Brand />
+          <button type="button" className="menu-toggle" onClick={() => setMenuCollapsed((value) => !value)}
+            aria-controls="mon-navigation" aria-expanded={!menuCollapsed} aria-label={menuAction} title={menuAction}>
+            {menuCollapsed ? <PanelLeftOpen size={19} aria-hidden="true" /> : <PanelLeftClose size={19} aria-hidden="true" />}
+          </button>
+        </div>
+        <nav id="mon-navigation" aria-label="Navegação principal">
+          <a href="/mon/" onClick={navigate} aria-current={storagePage || executionsPage || workersPage ? undefined : 'page'}
+            aria-label="Monitoramento" title={menuCollapsed ? 'Monitoramento' : undefined}>
+            <Activity size={17} aria-hidden="true" /><span>Monitoramento</span>
           </a>
-          <a href="/mon/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}>
-            <HardDrive size={17} aria-hidden="true" />Armazenamento
+          <a href="/mon/armazenamento" onClick={navigate} aria-current={storagePage ? 'page' : undefined}
+            aria-label="Armazenamento" title={menuCollapsed ? 'Armazenamento' : undefined}>
+            <HardDrive size={17} aria-hidden="true" /><span>Armazenamento</span>
           </a>
-          <a href="/mon/execucoes" onClick={navigate} aria-current={executionsPage ? 'page' : undefined}>
-            <ListChecks size={17} aria-hidden="true" />Execuções
+          <a href="/mon/execucoes" onClick={navigate} aria-current={executionsPage ? 'page' : undefined}
+            aria-label="Execuções" title={menuCollapsed ? 'Execuções' : undefined}>
+            <ListChecks size={17} aria-hidden="true" /><span>Execuções</span>
           </a>
-          <a href="/mon/workers" onClick={navigate} aria-current={workersPage ? 'page' : undefined}>
-            <Bot size={17} aria-hidden="true" />Saúde dos Workers
+          <a href="/mon/workers" onClick={navigate} aria-current={workersPage ? 'page' : undefined}
+            aria-label="Saúde dos Workers" title={menuCollapsed ? 'Saúde dos Workers' : undefined}>
+            <Bot size={17} aria-hidden="true" /><span>Saúde dos Workers</span>
           </a>
-      </nav>
-        {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}>
-          <LogOut size={17} aria-hidden="true" />Sair
+        </nav>
+        {!isDemo && <button type="button" className="logout" disabled={submitting} onClick={() => void logout()}
+          aria-label="Sair" title={menuCollapsed ? 'Sair' : undefined}>
+          <LogOut size={17} aria-hidden="true" /><span>Sair</span>
         </button>}
       </aside>
       <main className="workspace" id={workersPage ? 'workers' : executionsPage ? 'execucoes' : storagePage ? 'armazenamento' : 'monitoramento'}>
