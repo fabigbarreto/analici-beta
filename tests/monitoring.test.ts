@@ -51,7 +51,7 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   assert.equal((await call('/unconfigured-auth/session')).status, 503);
   assert.equal((await call('/unconfigured/dashboard')).status, 503);
   assert.equal((await call('/api/dashboard')).status, 401);
-  assert.equal((await call('/api/dashboard', '__Host-beta-session=' + 'A'.repeat(43))).status, 401);
+  assert.equal((await call('/api/dashboard', '__Host-mon-session=' + 'A'.repeat(43))).status, 401);
   assert.deepEqual(await (await call('/auth/session')).json(), { authenticated: false });
   assert.equal((await login('operator', password, 'https://wrong.example.test')).status, 403);
   assert.equal((await login('unknown', password)).status, 401);
@@ -65,7 +65,7 @@ test('local sessions protect telemetry, expire and can be revoked', async (t) =>
   assert.match(cookieHeader, /; Path=\//);
   assert.doesNotMatch(cookieHeader, /; Domain=/);
   const cookie = cookieHeader.split(';')[0];
-  assert.match(cookie, /^__Host-beta-session=/);
+  assert.match(cookie, /^__Host-mon-session=/);
   assert.deepEqual(await (await call('/auth/session', cookie)).json(), { authenticated: true });
   assert.equal((await call('/api/dashboard?period=constructor', cookie)).status, 400);
   assert.equal((await call('/api/dashboard?period=1h&period=24h', cookie)).status, 400);
