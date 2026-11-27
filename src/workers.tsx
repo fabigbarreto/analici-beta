@@ -30,10 +30,43 @@ function duration(value: number | null) {
 }
 
 function RunState({ status }: { status: WorkerRunStatus | null }) {
-  if (status === 'running') return <span className="badge delayed"><CircleDashed size={14} />Em execução</span>;
-  if (status === 'failed') return <span className="badge offline"><CircleAlert size={14} />Última execução falhou</span>;
-  if (status === 'success') return <span className="badge online"><CircleCheck size={14} />Última execução concluída</span>;
-  return <span className="badge"><Clock3 size={14} />Sem histórico</span>;
+  if (status === 'running') return <span className="badge delayed"><CircleDashed size={14} aria-hidden="true" />Em execução</span>;
+  if (status === 'failed') return <span className="badge offline"><CircleAlert size={14} aria-hidden="true" />Última execução falhou</span>;
+  if (status === 'success') return <span className="badge online"><CircleCheck size={14} aria-hidden="true" />Última execução concluída</span>;
+  return <span className="badge"><Clock3 size={14} aria-hidden="true" />Sem histórico</span>;
+}
+
+function WorkerCard({ worker }: { worker: WorkerHealth }) {
+  return (
+    <li className="chart worker-card">
+      <div>
+        <h3 className="worker-name"><Bot size={18} aria-hidden="true" /><span>{worker.label}</span></h3>
+        <code className="worker-id">{worker.name}</code>
+      </div>
+      <div className="worker-result">
+        <RunState status={worker.last_status} />
+        {worker.last_error && <p className="worker-error">{worker.last_error}</p>}
+      </div>
+      <dl className="worker-details">
+        <div className="worker-last-run">
+          <dt>Última execução</dt>
+          <dd>{date(worker.last_started_at)}</dd>
+        </div>
+        <div>
+          <dt>Execuções · 24h</dt>
+          <dd>{count(worker.runs_24h)}</dd>
+        </div>
+        <div>
+          <dt>Falhas · 24h</dt>
+          <dd className={worker.failures_24h ? 'worker-failures' : undefined}>{count(worker.failures_24h)}</dd>
+        </div>
+        <div>
+          <dt>Duração média</dt>
+          <dd>{duration(worker.average_duration_seconds)}</dd>
+        </div>
+      </dl>
+    </li>
+  );
 }
 
 export function Workers({ demo, onExpired }: { demo: boolean; onExpired: (message: string) => void }) {
@@ -103,25 +136,16 @@ export function Workers({ demo, onExpired }: { demo: boolean; onExpired: (messag
             <div className="chart"><dt className="muted">Falhas nas últimas 24h</dt><dd className={failed ? 'worker-failures' : undefined}>{count(workers ? failed : null)}</dd></div>
           </dl>
         </section>
-        <section className="chart" aria-labelledby="worker-list-title">
+        <section aria-labelledby="worker-list-title">
           <div className="section-heading"><h2 id="worker-list-title">Estado por Worker</h2>
             <span className="muted">Atualização automática a cada 15 segundos</span></div>
-          <div className="operations-scroll" role="region" aria-label="Saúde dos Workers" tabIndex={0}>
-            <table className="operations-table worker-table">
-              <thead><tr>{['Worker', 'Última execução', 'Resultado', 'Execuções · 24h', 'Falhas · 24h', 'Duração média'].map((label) =>
-                <th key={label} scope="col">{label}</th>)}</tr></thead>
-              <tbody>{workers?.map((worker) => <tr key={worker.name}>
-                <td><span className="worker-name"><Bot size={16} aria-hidden="true" />{worker.label}</span>
-                  <code>{worker.name}</code></td>
-                <td>{date(worker.last_started_at)}</td>
-                <td title={worker.last_error ?? undefined}><RunState status={worker.last_status} />
-                  {worker.last_error && <span className="worker-error">{worker.last_error}</span>}</td>
-                <td>{count(worker.runs_24h)}</td>
-                <td className={worker.failures_24h ? 'worker-failures' : undefined}>{count(worker.failures_24h)}</td>
-                <td>{duration(worker.average_duration_seconds)}</td>
-              </tr>)}</tbody>
-            </table>
-          </div>
+          {workers && workers.length > 0 && (
+            <ul className="worker-grid" role="list">
+              {workers.map((worker) => <WorkerCard key={worker.name} worker={worker} />)}
+            </ul>
+          )}
+          {!workers && !error && <p className="muted" role="status">Carregando Workers.</p>}
+          {workers?.length === 0 && <p className="muted">Nenhum Worker encontrado.</p>}
           <p className="footer">O status reflete a última execução registrada. Este painel não mede heartbeat nem confirma que o processo do Worker está ativo fora de uma execução.</p>
         </section>
       </>}
