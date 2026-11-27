@@ -19,16 +19,17 @@ if [[ $old == "$tag" ]]; then
   echo "Esta imagem já está ativa."
   exit 0
 fi
-etapa='identificar imagem da versão 701a001 e conferir o destino de rollback'
-case "$old" in
-  analici-mon:701a001|analici-beta:701a001) ;;
-  *) echo "Imagem de origem inesperada: $old" >&2; exit 1 ;;
-esac
+etapa='identificar imagem do Mon e conferir o destino de rollback'
+mon_image='^(analici-beta:701a001|analici-mon:(701a001|workers-[a-f0-9]{16}))$'
+if [[ ! $old =~ $mon_image ]]; then
+  echo "Imagem de origem inesperada: $old" >&2
+  exit 1
+fi
 baseid=$(docker inspect --format '{{.Image}}' "$cid")
 [[ $(docker image inspect --format '{{.Id}}' "$old") == "$baseid" ]]
 etapa='conferir imagem de recuperação configurada no Compose'
 configured=$(sed -n 's/^BETA_IMAGE=//p' .env)
-[[ $configured == analici-beta:701a001 || $configured == analici-mon:701a001 ]]
+[[ $configured =~ $mon_image ]]
 [[ $(docker image inspect --format '{{.Id}}' "$configured") == "$baseid" ]]
 [[ $("${compose[@]}" config --images beta) == "$configured" ]]
 etapa='confirmar o serviço Mon na porta 3107'
@@ -45,6 +46,11 @@ ctx=$(mktemp -d)
 trap 'rm -rf -- "$ctx"' EXIT
 cp "$1/workers.tgz" "$ctx/package.tgz"
 (cd "$ctx" && printf '%s  package.tgz\n' "$2" | sha256sum -c - && tar -xzf package.tgz && rm package.tgz)
+etapa='identificar bundle da nova página'
+bundle=$(sed -nE 's@.*src="(/mon/assets/[^"]+\.js)".*@\1@p' "$ctx/dist/client/index.html")
+[[ $bundle =~ ^/mon/assets/[a-zA-Z0-9_-]+\.js$ ]]
+grep -Fq 'worker-grid' "$ctx/dist/client${bundle#/mon}"
+etapa='construir imagem e guardar configuração anterior'
 printf 'FROM %s\nCOPY --chown=node:node dist/ /app/dist/\n' "$old" > "$ctx/Dockerfile"
 docker build --pull=false --network=none -t "$tag" "$ctx"
 backup=$(mktemp -d "$PWD/releases/workers-XXXXXXXX")
@@ -87,7 +93,10 @@ sed -i "s|^BETA_IMAGE=$configured$|BETA_IMAGE=$tag|" .env
 etapa='aguardar HTTP 200 em /mon/api/health'
 aguardar_saude
 etapa='abrir /mon/workers'
-curl -fsS "$url/workers" | grep -F '/mon/assets/' >/dev/null
+page=$(curl -fsS --max-time 10 "$url/workers")
+[[ $page == *"$bundle"* ]]
+curl -fsS --max-time 10 "http://127.0.0.1:3107$bundle" -o "$ctx/served-bundle.js"
+cmp -s "$ctx/served-bundle.js" "$ctx/dist/client${bundle#/mon}"
 etapa='verificar autenticação da API dos Workers'
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/atlas-executions/workers")" = 401
 etapa='consultar Workers no Atlas'
